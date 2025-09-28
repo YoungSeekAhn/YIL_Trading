@@ -3,7 +3,7 @@
 score_universe.py
 - KOSPI200 종목을 대상으로 조건별 점수 산정
 - 기술적(6), 거래량(2), 수급(5) = 총 13개 항목 → 최대 100점
-- 최근 영업일 5일 점수 합산(Score_1w) + 지표별 누적 점수 저장
+- 최근 영업일 5일 점수 합산(Score_1w) 기준 상위 종목 출력/저장
 """
 
 import warnings
@@ -23,47 +23,50 @@ from pathlib import Path
 import os
 from pandas.tseries.offsets import BDay
 
-import sys
-# Ensure project root is on sys.path so imports like `from DSConfig_3 import cfg` work
-# when this module is executed from inside the `trading_report` folder or other CWDs.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from DSConfig_3 import DSConfig
-from makedata.dataset_functions import last_trading_day
 
-cfg = DSConfig  # 프로젝트 설정 객체/클래스에 맞춰 사용하세요
+cfg = DSConfig
 
 # ===================== 설정 =====================
-TOP_N_MARCAP = 100
-PICK_TOP = 10
-INDEX_TICKER = "KS11"
-LOOKBACK_DAYS = 200
-WEEK_BDAYS = 5
+TOP_N_MARCAP = 100           # 시총 상위 N (현재는 KOSPI200로 대체)
+PICK_TOP = 10                # 최종 선별 수
+INDEX_TICKER = "KS11"        # KOSPI 지수 (FinanceDataReader)
+LOOKBACK_DAYS = 200          # 지표 계산기간(영업일 여유 포함)
+WEEK_BDAYS = 5               # '직전 1주' = 최근 5 영업일
 
+# 점수 테이블(요청안)
 WEIGHTS = {
     # --- 기술적 ---
-    "rsi30": 10,
-    "momentum_pos": 10,
-    "macd_cross": 10,
-    "ema5_over_ema20": 5,
-    "ema20_over_ema60": 10,
-    "rs_plus": 10,
+    "rsi30": 10,                # (1) RSI < 30
+    "momentum_pos": 10,         # (2) MOM>0
+    "macd_cross": 10,           # (3) MACD 골든크로스
+    "ema5_over_ema20": 5,       # (4) 5일선이 20일선 돌파
+    "ema20_over_ema60": 10,     # (5) 20일선이 60일선 돌파
+    "rs_plus": 10,              # (6) 20일 상대강도(종목-KOSPI) +
+
     # --- 거래량 ---
-    "vol_120": 5,
-    "vol_150": 10,
+    "vol_120": 5,               # (7) 3일평균 / 20일평균 ≥ 1.2
+    "vol_150": 10,              # (8) 3일평균 / 20일평균 ≥ 1.5
+
     # --- 수급 ---
-    "frg_own_1m_up": 10,
-    "frg_3_pos": 5,
-    "frg_5_pos": 5,
-    "ins_3_pos": 5,
-    "ins_5_pos": 5,
+    "frg_own_1m_up": 10,        # (9) 외국인 지분율 1개월 증가
+    "frg_3_pos": 5,             # (10) 외국인 3일 연속 순매수
+    "frg_5_pos": 5,             # (11) 외국인 5일 연속 순매수
+    "ins_3_pos": 5,             # (12) 기관 3일 연속 순매수
+    "ins_5_pos": 5,             # (13) 기관 5일 연속 순매수
 }
 
-VOLUME_SCORE_MODE = "max"  # "max" or "sum"
+# 거래량 점수 합산 정책: 120%와 150%가 동시 충족 시
+VOLUME_SCORE_MODE = "max"  # "max"=상한만 채택, "sum"=둘 다 더함
 # =================================================
 
 
 # ===================== 유틸/헬퍼 =====================
 def add_indicators(px: pd.DataFrame) -> pd.DataFrame:
+    """
+    OHLCV 데이터프레임(px)에 기술적 지표 추가:
+      - RSI(7), MOM10/5, EMA5/20/60, MACD(12,26,9), VOL_3MA, VOL_MA20
+    """
     out = px.copy()
     rename_map = {c: c.capitalize() for c in out.columns}
     out = out.rename(columns=rename_map)
@@ -101,6 +104,10 @@ def add_indicators(px: pd.DataFrame) -> pd.DataFrame:
 
 
 def fetch_investor_netbuy_df(ticker: str, start_yyyymmdd: str, end_yyyymmdd: str) -> pd.DataFrame:
+    """
+    투자자별 순매수(금액) – pykrx
+    반환: index=datetime, columns=['FRG','INS']  (원 단위, +면 순매수)
+    """
     if isinstance(ticker, str) and ticker.isdigit() and len(ticker) < 6:
         ticker = ticker.zfill(6)
 
@@ -128,12 +135,18 @@ def fetch_investor_netbuy_df(ticker: str, start_yyyymmdd: str, end_yyyymmdd: str
     s_frg = pick_col(df, col_map["FRG"])
     s_ins = pick_col(df, col_map["INS"])
     out = pd.concat([s_frg.rename("FRG"), s_ins.rename("INS")], axis=1)
+
     if out["FRG"].isna().all() and out["INS"].isna().all():
         return pd.DataFrame(columns=["FRG", "INS"])
+
     return out
 
 
 def foreign_ownership_ratio(date_yyyymmdd: str, market="KOSPI") -> pd.DataFrame:
+    """
+    외국인 보유비중/한도소진율 등 지표 – 버전마다 컬럼명이 다를 수 있어 추론.
+    반환: ['티커','지분율'] 로 정규화
+    """
     try:
         df = krx.get_exhaustion_rates_of_foreign_investment_by_ticker(date_yyyymmdd, market=market)
         if "티커" not in df.columns:
@@ -171,17 +184,20 @@ class ScoreBreakdown:
                     self.ema5_over_ema20 + self.ema20_over_ema60 + self.rs_plus +
                     self.frg_own_1m_up + self.frg_3_pos + self.frg_5_pos +
                     self.ins_3_pos + self.ins_5_pos)
-        return base_sum + vol_part
+        return base_sum + (vol_part)
 
 
 def score_one(
     ticker: str,
-    px: pd.DataFrame,
-    inv: pd.DataFrame,
-    kospi_close: pd.Series,
-    frg_now: float = np.nan,
-    frg_1m: float = np.nan
+    px: pd.DataFrame,               # OHLCV + 인디케이터 (index=Datetime)
+    inv: pd.DataFrame,              # 투자자 순매수 금액 ['FRG','INS'] (index=Datetime)
+    kospi_close: pd.Series,         # KOSPI 종가 (index=Datetime)
+    frg_now: float = np.nan,        # 외국인 지분율(해당일)
+    frg_1m: float = np.nan          # 외국인 지분율(해당일의 1개월 전 근사)
 ) -> Tuple[int, ScoreBreakdown]:
+    """
+    요청하신 13개 조건으로 점수 산정 (해당일 기준)
+    """
     bd = ScoreBreakdown()
     if px is None or px.empty or len(px) < 65:
         return 0, bd
@@ -210,7 +226,7 @@ def score_one(
     except Exception:
         pass
 
-    # (4) 5일선 > 20일선 오늘 돌파
+    # (4) 5일선 > 20일선으로 오늘 돌파
     try:
         now = px["EMA5"].iloc[-1] > px["EMA20"].iloc[-1]
         prev = px["EMA5"].iloc[-2] <= px["EMA20"].iloc[-2]
@@ -219,7 +235,7 @@ def score_one(
     except Exception:
         pass
 
-    # (5) 20일선 > 60일선 오늘 돌파
+    # (5) 20일선 > 60일선으로 오늘 돌파
     try:
         now = px["EMA20"].iloc[-1] > px["EMA60"].iloc[-1]
         prev = px["EMA20"].iloc[-2] <= px["EMA60"].iloc[-2]
@@ -239,7 +255,7 @@ def score_one(
     except Exception:
         pass
 
-    # (7)(8) 거래량
+    # (7)(8) 거래량: 3일평균 / 20일평균
     try:
         ratio = px.loc[last, "VOL_3MA"] / (px.loc[last, "VOL_MA20"] + 1e-12)
         if ratio >= 1.2:
@@ -282,11 +298,18 @@ def score_one(
     return bd.total(), bd
 
 
+# ========= 주간(최근 5영업일) 합산 유틸 =========
 def pick_foreign_own_for_date(fr_df: pd.DataFrame, the_date: pd.Timestamp):
+    """
+    fr_df: get_exhaustion_rates_of_foreign_investment_by_date 결과
+           index=datetime, '한도소진율' 컬럼 가정
+    the_date 기준의 최신값(frg_now)과 1개월 전 근사(frg_1m; 22BD 전)를 반환
+    """
     if fr_df is None or fr_df.empty or "한도소진율" not in fr_df.columns:
         return np.nan, np.nan
 
     fr_df = fr_df.sort_index()
+    # the_date 이전(포함) 관측치 중 최신
     frg_now = fr_df.loc[:the_date, "한도소진율"].tail(1)
     frg_now = float(frg_now.iloc[0]) if len(frg_now) else np.nan
 
@@ -296,32 +319,32 @@ def pick_foreign_own_for_date(fr_df: pd.DataFrame, the_date: pd.Timestamp):
     return frg_now, frg_1m
 
 
-# ========= 주간(최근 5영업일) 합산 유틸 =========
 def compute_weekly_score(
     ticker: str,
     px: pd.DataFrame,
     inv: pd.DataFrame,
     kospi_close: pd.Series,
     fr_df: pd.DataFrame,
-) -> Tuple[float, Dict[str, int], List[Dict]]:
+) -> Tuple[float, Dict, List[Dict]]:
     """
     최근 5영업일 각각에 대해 score_one(...)을 호출 → 합산
     반환:
       - week_sum: 주간 총점(float)
-      - week_bd_sum: 지표별 주간 누적 점수 dict (WEIGHTS 키 전부 포함)
+      - last_bd_dict: 가장 최근 일자의 ScoreBreakdown dict
       - daily_breakdown: [{date, score, **breakdown}, ...] 최근 5영업일 리스트
     """
     if px is None or px.empty:
-        return 0.0, {k: 0 for k in WEIGHTS.keys()}, []
+        return 0.0, {}, []
 
     px = px.sort_index()
     last_dates = list(px.index[-WEEK_BDAYS:])  # 최근 5BD
 
     week_sum = 0.0
-    week_bd_sum: Dict[str, int] = {k: 0 for k in WEIGHTS.keys()}
+    last_bd_dict: Dict = {}
     daily_breakdown: List[Dict] = []
 
     for d in last_dates:
+        # 일자 d 까지로 슬라이스
         px_d = px.loc[:d]
         inv_d = None
         if inv is not None and not inv.empty:
@@ -331,6 +354,7 @@ def compute_weekly_score(
             inv_d = inv_d.sort_index().loc[:d]
 
         kospi_d = kospi_close.loc[:d]
+
         frg_now_d, frg_1m_d = pick_foreign_own_for_date(fr_df, d)
 
         total_d, bd_d = score_one(
@@ -345,13 +369,12 @@ def compute_weekly_score(
         week_sum += float(total_d)
 
         bd_dict = getattr(bd_d, "__dict__", {})
-        # ★ 지표별 누적
-        for k in week_bd_sum.keys():
-            week_bd_sum[k] += int(bd_dict.get(k, 0) or 0)
-
         daily_breakdown.append({"date": d, "score": float(total_d), **bd_dict})
 
-    return week_sum, week_bd_sum, daily_breakdown
+        if d == last_dates[-1]:
+            last_bd_dict = bd_dict
+
+    return week_sum, last_bd_dict, daily_breakdown
 
 
 # ===================== 메인 파이프라인 =====================
@@ -374,23 +397,27 @@ def sel_stock(cfg):
     kospi_close = idx_df["Close"]
     kospi_close.index = pd.to_datetime(kospi_close.index)
 
-    # (선택) 외국인 지분율 스냅샷(미사용)
-    _fr_now_df = foreign_ownership_ratio(e_krx, market="KOSPI")
-    _fr_1m_df  = foreign_ownership_ratio(d1m,  market="KOSPI")
+    # (선택) 외국인 지분율 맵 - 본 로직은 fr_df로 일자별 추출하므로 사용 안 함
+    fr_now_df = foreign_ownership_ratio(e_krx, market="KOSPI")
+    fr_1m_df  = foreign_ownership_ratio(d1m,  market="KOSPI")
+    fr_now_map = dict(zip(fr_now_df.get("티커", []), fr_now_df.get("지분율", [])))
+    fr_1m_map  = dict(zip(fr_1m_df.get("티커", []),  fr_1m_df.get("지분율", [])))
 
-    # KOSPI200 구성종목
+    # KOSPI200 구성종목 티커(6자리) 리스트
     tickers = krx.get_index_portfolio_deposit_file("1028")
+
+    # 종목명 붙이기
     uni = pd.DataFrame({"Code": tickers})
     uni["Name"] = uni["Code"].apply(krx.get_market_ticker_name)
 
     rows: List[Dict] = []
 
     for _, r in tqdm(uni.iterrows(), total=len(uni)):
-        ticker = r["Code"]
+        ticker = r["Code"]          # 예: '005930'
         name   = r.get("Name", "")
 
         try:
-            # 4) 가격/거래량 + 인디케이터
+            # 4) 가격/거래량 (KRX OHLCV) + 인디케이터
             px = krx.get_market_ohlcv_by_date(s_krx, e_krx, ticker)
             if px is None or px.empty:
                 continue
@@ -405,17 +432,17 @@ def sel_stock(cfg):
             px.index = pd.to_datetime(px.index)
             px = add_indicators(px)
 
-            # 5) 수급
+            # 5) 투자자 수급
             inv = fetch_investor_netbuy_df(ticker, s_krx, e_krx)
 
-            # 6) 외국인 지분율(시계열; 한도소진율 proxy)
+            # 6) 외국인 지분율(일자별) - 소진율 시계열
             fr_df = krx.get_exhaustion_rates_of_foreign_investment_by_date(s_krx, e_krx, ticker)
             if fr_df is not None and not fr_df.empty:
                 fr_df.index = pd.to_datetime(fr_df.index)
                 fr_df = fr_df.sort_index()
 
-            # 7) 최근 5영업일 누적 계산
-            week_sum, week_bd_sum, daily_breakdown = compute_weekly_score(
+            # 7) 최근 5영업일 점수 합산
+            week_sum, last_bd_dict, daily_breakdown = compute_weekly_score(
                 ticker=ticker,
                 px=px,
                 inv=inv,
@@ -423,28 +450,16 @@ def sel_stock(cfg):
                 fr_df=fr_df if (fr_df is not None and not fr_df.empty) else pd.DataFrame()
             )
 
-            # ★ 누적 점수 저장
-            row = {
+            rows.append({
                 "Name": name,
                 "Code": ticker,
-                "Score_1w": week_sum,
-            }
-            # 지표별 누적(키 정렬 보장)
-            for k in WEIGHTS.keys():
-                if k in week_bd_sum:
-                    row[k] = int(week_bd_sum[k])
-
-            rows.append(row)
-
-            # (선택) 일자별 breakdown을 별도 폴더에 저장하고 싶다면 주석 해제
-            # out_dir = Path(cfg.selout_dir) / "daily_breakdown"
-            # out_dir.mkdir(parents=True, exist_ok=True)
-            # pd.DataFrame(daily_breakdown).to_csv(
-            #     out_dir / f"{ticker}_{e_krx}.csv", index=False, encoding="utf-8-sig"
-            # )
+                "Score_1w": week_sum,     # ★ 주간 총점
+                **last_bd_dict            # 마지막 일자 브레이크다운(원하면 보존)
+                # 필요 시 daily_breakdown를 별도 파일로 저장 가능
+            })
 
         except Exception:
-            # 데이터 누락/휴장/형식 차이 등은 스킵
+            # 휴장/데이터 누락/형식 차이 등은 스킵
             continue
 
     if not rows:
@@ -457,7 +472,7 @@ def sel_stock(cfg):
     print("\n=== 직전 1주(5영업일) 총점 상위 종목 ===")
     print(out.head(PICK_TOP)[["Name", "Code", "Score_1w"]])
 
-    print("\n=== (참고) 지표별 주간 누적 점수(상위) ===")
+    print("\n=== (참고) 마지막 일자 점수 브레이크다운(상위) ===")
     cols = ["Name","Code","Score_1w"] + list(WEIGHTS.keys())
     cols = [c for c in cols if c in out.columns]
     print(out.head(PICK_TOP)[cols])
@@ -471,9 +486,4 @@ def sel_stock(cfg):
 
 
 if __name__ == "__main__":
-    # DSConfig가 인스턴스가 아니라 클래스라면 적절히 인스턴스화하세요.
-    # 예: cfg = DSConfig()  또는  from DSConfig_3 import config as cfg
-    cfg = DSConfig
-    end_date = last_trading_day()
-    cfg.end_date = end_date
-    sel_stock(cfg)
+    sel_stock()

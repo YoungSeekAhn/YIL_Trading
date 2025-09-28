@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Top 10 by Score_1w</title>
+<style>
+:root {
+  --bg: #ffffff;
+  --card: #ffffff;
+  --text: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --row: #f9fafb;
+  --accent: #2563eb;
+  --pos: #16a34a;
+  --mid: #f59e0b;
+  --neg: #9ca3af;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1020;
+    --card: #0f172a;
+    --text: #e5e7eb;
+    --muted: #a1a1aa;
+    --border: #1f2937;
+    --row: #0b1220;
+    --accent: #3b82f6;
+    --pos: #22c55e;
+    --mid: #fbbf24;
+    --neg: #6b7280;
+  }
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0; padding: 24px;
+  font-family: system-ui, Segoe UI, Arial, Apple SD Gothic Neo, Noto Sans KR, sans-serif;
+  background: var(--bg); color: var(--text);
+  letter-spacing: .1px; line-height: 1.45;
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+}
+.container { max-width: 1200px; margin: 0 auto; }
+.header {
+  display:flex; align-items:baseline; gap:12px; margin-bottom: 12px;
+}
+h1 { margin: 0; font-size: 22px; font-weight: 700; letter-spacing:.2px; }
+.meta { color: var(--muted); font-size: 13px; }
+.legend { color: var(--muted); font-size: 13px; display:flex; gap:12px; margin: 8px 0 16px; flex-wrap: wrap; }
+.legend .pill { transform: translateY(-1px); }
+.card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px; box-shadow: 0 1px 2px rgba(0,0,0,.05);
+}
+.table-wrap { overflow-x: auto; }
+table {
+  width: 100%; border-collapse: separate; border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--card); color: var(--muted);
+  text-align: center; font-weight: 700; font-size: 13px;
+  padding: 10px 8px; border-bottom: 1px solid var(--border);
+  letter-spacing:.3px; text-transform: uppercase;
+}
+tbody td {
+  padding: 10px 8px; border-bottom: 1px solid var(--border); text-align: center;
+}
+tbody tr:hover { background: var(--row); }
+.col-rank, .rank { width: 48px; }
+.rank {
+  font-weight: 700; color: var(--muted);
+}
+.text { text-align: left; white-space: nowrap; }
+
+.score-cell { min-width: 180px; }
+.score {
+  position: relative; height: 22px; display: flex; align-items: center; gap: 8px;
+}
+.score .bar {
+  --w: 0%;
+  position: relative; flex: 1 1 auto; height: 8px; border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent) var(--w), rgba(127,127,127,.18) var(--w));
+  outline: 1px solid rgba(127,127,127,.15);
+}
+.score .val {
+  min-width: 64px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+
+.pill {
+  display:inline-block; min-width: 28px; padding: 2px 8px;
+  border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing:.3px;
+  color: #fff; line-height: 1.4; border: 1px solid rgba(0,0,0,.08);
+}
+.pill-10 { background: var(--pos); }
+.pill-5  { background: var(--mid); }
+.pill-0  { background: var(--neg); }
+.pill-na { background: var(--neg); opacity:.6; }
+
+.footer {
+  margin-top: 10px; color: var(--muted); font-size: 12px;
+}
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>YIL – Top 10 종목 (정렬: Score_1w ↓)</h1>
+      <div class="meta">생성시각: 2025-09-28 19:51:50</div>
+    </div>
+    <div class="legend">
+      <div><span class="pill pill-10">10</span> 긍정</div>
+      <div><span class="pill pill-5">5</span> 중립</div>
+      <div><span class="pill pill-0">0</span> 없음</div>
+    </div>
+
+    <div class="card table-wrap">
+      <table>
+        <thead><tr><th class="col-rank">#</th><th>종목명</th><th>코드</th><th>Score(1w)</th><th>RSI&lt;30</th><th>Momentum</th><th>MACD</th><th>EMA5&gt;20</th><th>EMA20&gt;60</th><th>RS+</th><th>Vol120</th><th>Vol150</th><th>외인지분↑1M</th><th>외인(3)</th><th>외인(5)</th><th>기관(3)</th><th>기관(5)</th></tr></thead>
+        <tbody>
+          <tr><td class="rank">1</td><td class="text">한미약품</td><td class="text">128940</td><td class="score-cell"><div class="score">  <div class="bar" style="--w:100%"></div>  <span class="val">175.0</span></div></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-5">5</span></td><td class="sig"><span class="pill pill-10">40</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">15</span></td><td class="sig"><span class="pill pill-10">15</span></td></tr>
+<tr><td class="rank">2</td><td class="text">삼성전자</td><td class="text">005930</td><td class="score-cell"><div class="score">  <div class="bar" style="--w:94%"></div>  <span class="val">165.0</span></div></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-10">15</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">25</span></td><td class="sig"><span class="pill pill-10">25</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td></tr>
+<tr><td class="rank">3</td><td class="text">지역난방공사</td><td class="text">071320</td><td class="score-cell"><div class="score">  <div class="bar" style="--w:94%"></div>  <span class="val">165.0</span></div></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-10">20</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">25</span></td><td class="sig"><span class="pill pill-10">20</span></td></tr>
+<tr><td class="rank">4</td><td class="text">LG디스플레이</td><td class="text">034220</td><td class="score-cell"><div class="score">  <div class="bar" style="--w:91%"></div>  <span class="val">160.0</span></div></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-10">10</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">25</span></td><td class="sig"><span class="pill pill-10">25</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td></tr>
+<tr><td class="rank">5</td><td class="text">LG이노텍</td><td class="text">011070</td><td class="score-cell"><div class="score">  <div class="bar" style="--w:91%"></div>  <span class="val">160.0</span></div></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">20</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">20</span></td><td class="sig"><span class="pill pill-10">10</span></td><td class="sig"><span class="pill pill-10">10</span></td><td class="sig"><span class="pill pill-0">0</span></td></tr>
+<tr><td class="rank">6</td><td class="text">호텔신라</td><td class="text">008770</td><td class="score-cell"><div class="score">  <div class="bar" style="--w:89%"></div>  <span class="val">155.0</span></div></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">40</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-5">5</span></td><td class="sig"><span class="pill pill-10">20</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">10</span></td><td class="sig"><span class="pill pill-5">5</span></td><td class="sig"><span class="pill pill-10">15</span></td><td class="sig"><span class="pill pill-10">10</span></td></tr>
+<tr><td class="rank">7</td><td class="text">신세계</td><td class="text">004170</td><td class="score-cell"><div class="score">  <div class="bar" style="--w:86%"></div>  <span class="val">150.0</span></div></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">30</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">20</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">25</span></td><td class="sig"><span class="pill pill-10">25</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td></tr>
+<tr><td class="rank">8</td><td class="text">삼성전기</td><td class="text">009150</td><td class="score-cell"><div class="score">  <div class="bar" style="--w:80%"></div>  <span class="val">140.0</span></div></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">40</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">25</span></td><td class="sig"><span class="pill pill-10">25</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td></tr>
+<tr><td class="rank">9</td><td class="text">SK스퀘어</td><td class="text">402340</td><td class="score-cell"><div class="score">  <div class="bar" style="--w:77%"></div>  <span class="val">135.0</span></div></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">40</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-5">5</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">20</span></td><td class="sig"><span class="pill pill-10">20</span></td></tr>
+<tr><td class="rank">10</td><td class="text">삼성물산</td><td class="text">028260</td><td class="score-cell"><div class="score">  <div class="bar" style="--w:74%"></div>  <span class="val">130.0</span></div></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">30</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">50</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-10">25</span></td><td class="sig"><span class="pill pill-10">25</span></td><td class="sig"><span class="pill pill-0">0</span></td><td class="sig"><span class="pill pill-0">0</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="footer">※ 본 화면은 자동 생성된 스코어 요약이며, 투자 권유가 아닙니다.</div>
+  </div>
+</body>
+</html>

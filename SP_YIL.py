@@ -24,13 +24,13 @@ from trading_report.report_trade_price import report_trade_price
 # =========================
 # 사용자 설정
 # =========================
-TOP_N = 2
+TOP_N = 10
 DURATION_DAYS = 365 * 2          # 데이터 기간
 SAVE_CSV_FILE = True             # get_dataset 수집 CSV 저장 여부
 FORCE_REBUILD_DATASET = False    # True면 기존 .pkl 있어도 새로 make_datasets
 PLOT_ROLLING = False             # (사용 중이면) 롤링 차트 그릴지 여부
 
-TEST_MODE = True               # True면 end_date를 20250924로 고정 (테스트용)
+TEST_MODE = False               # True면 end_date를 20250924로 고정 (테스트용)
 
 # =========================
 # 유틸
@@ -131,6 +131,9 @@ def main():
     # 선정 CSV 로드
     #  CSV는 sel_stock_ndays.py 결과물이어야 함
     start_date, end_date= _compute_dates()
+    
+    config.start_date = start_date
+    config.end_date = end_date
     
     sel_dir = Path(config.selout_dir)
     SEL_CSV_PATH = os.path.join(sel_dir, f"scored_{end_date}.csv")

@@ -19,9 +19,16 @@ import argparse
 import html
 import math
 import pandas as pd
+import shutil
 from datetime import datetime
 from pathlib import Path
 from trading_report.make_trade_price import make_trade_price
+import sys
+# Ensure project root is on sys.path so imports like `from DSConfig_3 import cfg` work
+# when this module is executed from inside the `trading_report` folder or other CWDs.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from DSConfig_3 import config
+from makedata.dataset_functions import last_trading_day
 
 # ---- 유틸 ----
 def _fmt(x, nd=2):
@@ -345,4 +352,19 @@ def report_trade_price(cfg):
         f.write(html)
     print(f"[OK] HTML saved -> {out_html}")
 
+    copy_path = Path(r'C:\Users\ganys\python_work\YIL_server\shared\reports')
+    try:
+        copy_path.mkdir(parents=True, exist_ok=True)
+        dst = copy_path / out_html.name
+        shutil.copy(out_html, dst)
+        print(f"[OK] HTML copied to -> {dst}")
+    except Exception as e:
+        print(f"[WARN] failed to copy HTML to shared reports: {e}")
+
   # ("--with-cards", action="store_true", help="하단 카드형 섹션 추가")
+
+if __name__ == "__main__":
+  end_date = last_trading_day()
+  config.end_date = end_date
+  report_trade_price(config)
+

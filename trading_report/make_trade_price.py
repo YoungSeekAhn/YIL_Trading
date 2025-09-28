@@ -357,9 +357,27 @@ def make_trade_price(cfg, equity: Optional[float]=None, risk_pct: Optional[float
     cols = [c for c in order if c in out.columns] + [c for c in out.columns if c not in order]
     out = out[cols]
 
-    out_path = Path(cfg.report_dir) / f"Report_{cfg.end_date}" / f"Trading_price_{cfg.end_date}.csv"
-    out.to_csv(out_path, index=False, encoding="utf-8-sig")
-    print(f"[OK] saved -> {out_path}")
+    report_dir = Path(cfg.report_dir) / f"Report_{cfg.end_date}"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"Trading_price_{cfg.end_date}.csv"
+    out_path = report_dir / filename
+
+    try:
+        out.to_csv(out_path, index=False, encoding="utf-8-sig")
+    except PermissionError as e:
+        # Common cause: file is open in Excel or locked by another process.
+        # Attempt to save to a timestamped alternative filename and warn the user.
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        alt_path = report_dir / f"Trading_price_{cfg.end_date}_{ts}.csv"
+        try:
+            out.to_csv(alt_path, index=False, encoding="utf-8-sig")
+            print(f"[WARN] could not write {out_path!s} (permission denied). Saved to {alt_path!s} instead.")
+            out_path = alt_path
+        except Exception as e2:
+            # If even the alternative fails, re-raise the original PermissionError with context.
+            raise PermissionError(f"Failed to save report to '{out_path}' and alternative '{alt_path}': {e2}") from e
+    else:
+        print(f"[OK] saved -> {out_path}")
     return out
 
    #--equity", type=float, default=None, help="계좌 총자산(원). 리스크 기반 수량 산정에 사용")

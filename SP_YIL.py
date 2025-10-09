@@ -24,7 +24,7 @@ from trading_report.report_trade_price import report_trade_price
 # =========================
 # 사용자 설정
 # =========================
-TOP_N = 10
+TOP_N = 5
 DURATION_DAYS = 365 * 2          # 데이터 기간
 SAVE_CSV_FILE = True             # get_dataset 수집 CSV 저장 여부
 FORCE_REBUILD_DATASET = False    # True면 기존 .pkl 있어도 새로 make_datasets

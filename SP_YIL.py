@@ -30,7 +30,7 @@ SAVE_CSV_FILE = True             # get_dataset 수집 CSV 저장 여부
 FORCE_REBUILD_DATASET = False    # True면 기존 .pkl 있어도 새로 make_datasets
 PLOT_ROLLING = False             # (사용 중이면) 롤링 차트 그릴지 여부
 
-TEST_MODE = False               # True면 end_date를 20250924로 고정 (테스트용)
+TEST_MODE = True               # True면 end_date를 20250924로 고정 (테스트용)
 
 # =========================
 # 유틸

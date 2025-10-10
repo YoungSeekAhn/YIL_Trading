@@ -1,30 +1,35 @@
 # -*- coding: utf-8 -*-
 """
-batch_select_horizon_and_levels_v3.py
-- <predict_dir>/<end_date> 폴더의 *.csv 를 '각 파일별로' 독립 처리
-- 파일마다: (여러 종목이 있을 수 있음) → 종목별 평가/권장호라이즌/레벨/추가파라미터 생성
-- 모든 파일의 결과를 리스트로 모아 마지막에 단일 CSV로 저장
+batch_select_horizon_and_levels_v4.py
+- v3 기반 개선판 (변동성/틱/신뢰도/사이드/캘린더 보강)
+- <predict_dir>/<end_date>/*.csv 각 파일 단위 처리 → 종목 단위 집계 후 최종 CSV 출력
 
-v2와 차이:
-  - 더 이상 입력 CSV들을 먼저 concat 하지 않음
-  - 파일 단위로 처리 후 결과만 누적
+핵심 변경점(v3 → v4):
+  1) buf 산출식 강화: max(MAE, |Bias|, ATR*k) (기본 k=0.6, ATR기간=14)
+  2) 틱/호가단위 반영: entry/tp/sl을 틱 단위로 반올림 (거래소별 틱 룰 함수 주입 가능)
+  3) 신뢰도 스코어 스무딩: 로지스틱(sigmoid) 기반으로 급경사 완화
+  4) 사이드 결정식 고도화: Δp/vol 기반 z-score + DirAcc 보정
+  5) 휴일/영업일 훅: 간단한 휴일 리스트를 받아 valid_until 조정 (없으면 주말만 보정)
+  6) 품질 플래그 및 설명 컬럼 확장: 선택 사유/페널티 내역을 결과에 일부 노출
+  7) 포지션 사이징: per_share_risk 하한을 틱단위로, 수수료/슬리피지 보정 훅 추가
 
 CLI 예:
-  python batch_select_horizon_and_levels_v3.py --predict-dir ./predict --end-date 20250925 \
-      --out ./recommended_levels_v3.csv --equity 50000000 --risk-pct 0.005 --allow-short
+  python batch_select_horizon_and_levels_v4.py --predict-dir ./predict --end-date 20250925 \
+      --report-dir ./reports --out Trading_price_20250925.csv --equity 50000000 --risk-pct 0.005 --allow-short
 """
-
 from __future__ import annotations
 from pathlib import Path
-from typing import Dict, Tuple, Optional, List
+from typing import Dict, Tuple, Optional, List, Callable
 import argparse
 import numpy as np
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 try:
     from zoneinfo import ZoneInfo  # Python 3.9+
 except Exception:
     ZoneInfo = None
+import math
+import logging
 
 # ====== 설정 ======
 HORIZONS = ["h1","h2","h3"]
@@ -53,12 +58,64 @@ WC_DA   = 0.30
 WC_BIAS = 0.20
 WC_CNT  = 0.10
 
+# 신뢰도 스무딩 파라미터
+SIG_K_DA = 0.15   # DirAcc 로지스틱 기울기
+SIG_K_M  = 1.25   # MAPE 로지스틱 기울기
+
+# ATR 설정
+USE_ATR_IN_BUF = True
+ATR_PERIOD = 14
+ATR_WEIGHT = 0.6   # buf = max(MAE, |Bias|, ATR*0.6)
+
+# 수수료/슬리피지 (양방향 합산 예상치)
+SLIPPAGE = 0.0
+FEES_PCT = 0.0   # 0.0005 = 5bps
+
 # 마감 시각(현물)
 DEFAULT_CLOSE_HHMM = (15, 20)  # 15:20 KST
 
+# 로깅
+logging.basicConfig(level=logging.INFO, format='[%(levelname)s] %(message)s')
 
 # ====== 유틸 ======
 def _safe_num(s): return pd.to_numeric(s, errors="coerce")
+
+def _calc_atr(df: pd.DataFrame, period: int=14) -> float:
+    cols = {c for c in df.columns}
+    if not {"true_high","true_low","true_close"}.issubset(cols):
+        return np.nan
+    dd = df.sort_values("date").copy()
+    h, l, c = map(_safe_num, (dd["true_high"], dd["true_low"], dd["true_close"]))
+    prev_c = c.shift(1)
+    tr1 = h - l
+    tr2 = (h - prev_c).abs()
+    tr3 = (l - prev_c).abs()
+    tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+    if tr.dropna().empty:
+        return np.nan
+    atr = tr.rolling(period, min_periods=max(2, period//2)).mean().iloc[-1]
+    return float(atr) if pd.notna(atr) else np.nan
+
+# 틱/호가단위: 거래소별 사용자 정의 가능
+# 기본 틱: 가격 구간 무시하고 고정 tick_size 반환
+TickSizeFn = Callable[[float, str], float]
+
+def default_tick_size(price: float, code: str) -> float:
+    # 예시: 코스피/코스닥 일반 단일 틱 10원 (실전은 가격대별 구간 적용 권장)
+    return 10.0
+
+
+def round_to_tick(x: float, tick: float, mode: str="nearest") -> float:
+    if not (tick and tick > 0):
+        return float(x)
+    q = x / tick
+    if mode == "down":
+        return math.floor(q) * tick
+    elif mode == "up":
+        return math.ceil(q) * tick
+    else:
+        return round(q) * tick
+
 
 def _metrics(y_true: pd.Series, y_pred: pd.Series) -> Dict[str, float]:
     y_true = _safe_num(y_true); y_pred = _safe_num(y_pred)
@@ -72,6 +129,7 @@ def _metrics(y_true: pd.Series, y_pred: pd.Series) -> Dict[str, float]:
     mape = float(np.mean(np.abs(e / np.clip(yt, EPS, None))) * 100.0)
     bias = float(np.mean(e))
     return {"count": int(mask.sum()), "RMSE": rmse, "MAE": mae, "MAPE(%)": mape, "Bias": bias}
+
 
 def _diracc_close(df: pd.DataFrame, h: str) -> Dict[str, float]:
     if "true_close" not in df.columns: return {"DirAcc_close(%)": np.nan, "Dir_count":0}
@@ -88,6 +146,7 @@ def _diracc_close(df: pd.DataFrame, h: str) -> Dict[str, float]:
     acc = float((true_dir == pred_dir).mean() * 100.0)
     return {"DirAcc_close(%)": acc, "Dir_count": int(mask.sum())}
 
+
 def _rank_norm(vals, ascending=True):
     s = pd.Series(vals, dtype=float)
     if s.dropna().empty: return [0.5]*len(s)
@@ -95,6 +154,7 @@ def _rank_norm(vals, ascending=True):
     norm = (r - 1) / max(len(s)-1, 1)
     norm[s.isna()] = 0.5
     return norm.tolist()
+
 
 def _score_hblock(row, h):
     return {
@@ -105,7 +165,8 @@ def _score_hblock(row, h):
         "Count":row.get(f"{h}_close_count", np.nan)
     }
 
-def pick_horizon(row) -> Tuple[str, Dict]:
+
+def pick_horizon(row) -> Tuple[str, Dict, Dict]:
     hs = HORIZONS
     blocks = {h:_score_hblock(row, h) for h in hs}
     mape_n = _rank_norm([blocks[h]["MAPE"] for h in hs], ascending=True)
@@ -114,12 +175,17 @@ def pick_horizon(row) -> Tuple[str, Dict]:
     mae_n  = _rank_norm([blocks[h]["MAE"]     for h in hs], ascending=True)
     base = {h: (W_MAPE*mape_n[i] + W_DA*da_n[i] + W_BIAS*bias_n[i] + W_MAE*mae_n[i]) for i,h in enumerate(hs)}
     pen  = {h: 0.0 for h in hs}
+    flags = {h: [] for h in hs}
     for h in hs:
         b = blocks[h]
-        if pd.notna(b["MAPE"]) and b["MAPE"] > MAPE_MAX: pen[h] += 0.50
-        if pd.notna(b["DA"])   and b["DA"]   < DIRACC_MIN: pen[h] += 0.25
-        if pd.notna(b["MAE"]) and pd.notna(b["BiasAbs"]) and (b["BiasAbs"] > BIAS_MAE_RATIO_MAX * b["MAE"]): pen[h] += 0.20
-        if pd.notna(b["Count"]) and b["Count"] < COUNT_MIN: pen[h] += 0.25
+        if pd.notna(b["MAPE"]) and b["MAPE"] > MAPE_MAX:
+            pen[h] += 0.50; flags[h].append("MAPE>MAX")
+        if pd.notna(b["DA"])   and b["DA"]   < DIRACC_MIN:
+            pen[h] += 0.25; flags[h].append("DA<MIN")
+        if pd.notna(b["MAE"]) and pd.notna(b["BiasAbs"]) and (b["BiasAbs"] > BIAS_MAE_RATIO_MAX * b["MAE"]):
+            pen[h] += 0.20; flags[h].append("|Bias|>r*MAE")
+        if pd.notna(b["Count"]) and b["Count"] < COUNT_MIN:
+            pen[h] += 0.25; flags[h].append("COUNT<MIN")
     total = {h: base[h] + pen[h] for h in hs}
     best = sorted(hs, key=lambda x: (
         total[x],
@@ -127,28 +193,42 @@ def pick_horizon(row) -> Tuple[str, Dict]:
         -(blocks[x]["DA"] if pd.notna(blocks[x]["DA"]) else -np.inf)
     ))[0]
     explain = {h: {"base": round(base[h],4), "penalty": round(pen[h],4), "total": round(total[h],4)} for h in hs}
-    return best, explain
+    return best, explain, flags
 
-def _buf(mae, bias):
-    vals = [mae, abs(bias)]
+
+def _buf(mae, bias, atr):
+    vals = [mae, abs(bias), atr*ATR_WEIGHT if pd.notna(atr) else np.nan]
     vals = [v for v in vals if pd.notna(v)]
     return max(vals) if vals else np.nan
 
-def compute_levels(row, h_sel, last_close, last_pred: Dict[str, float]):
+
+def compute_levels(row, h_sel, last_close, last_pred: Dict[str, float],
+                   atr_val: float,
+                   code: str,
+                   tick_fn: TickSizeFn = default_tick_size):
     mae = row.get(f"{h_sel}_close_MAE", np.nan)
     bias= row.get(f"{h_sel}_close_Bias", np.nan)
     mae_h= row.get(f"{h_sel}_high_MAE", np.nan); bias_h = row.get(f"{h_sel}_high_Bias", np.nan)
     mae_l= row.get(f"{h_sel}_low_MAE",  np.nan); bias_l = row.get(f"{h_sel}_low_Bias",  np.nan)
-    buf_close = _buf(mae, bias)
-    buf_high  = _buf(mae_h, bias_h) if pd.notna(mae_h) or pd.notna(bias_h) else buf_close
-    buf_low   = _buf(mae_l, bias_l) if pd.notna(mae_l) or pd.notna(bias_l) else buf_close
-    if pd.isna(buf_close): buf_close = max(1.0, mae if pd.notna(mae) else 1.0)
 
+    atr = atr_val if USE_ATR_IN_BUF else np.nan
+    buf_close = _buf(mae, bias, atr)
+    # high/low 전용 버퍼
+    atr_h = atr_val if USE_ATR_IN_BUF else np.nan
+    atr_l = atr_val if USE_ATR_IN_BUF else np.nan
+    buf_high  = _buf(mae_h, bias_h, atr_h) if (pd.notna(mae_h) or pd.notna(bias_h)) else buf_close
+    buf_low   = _buf(mae_l, bias_l, atr_l) if (pd.notna(mae_l) or pd.notna(bias_l)) else buf_close
+
+    if pd.isna(buf_close):
+        buf_close = max(1.0, mae if pd.notna(mae) else 1.0)
+
+    # 기본 레벨
     entry = float(last_close) - ENTRY_PULLBACK * buf_close
     risk  = buf_close
     tp    = float(last_close) + RISK_REWARD * risk
     sl    = float(last_close) - risk
 
+    # 예측 상한/하한으로 보수 조정
     p_close = last_pred.get("close", np.nan)
     p_high  = last_pred.get("high",  np.nan)
     p_low   = last_pred.get("low",   np.nan)
@@ -160,15 +240,154 @@ def compute_levels(row, h_sel, last_close, last_pred: Dict[str, float]):
     if not pd.isna(p_low):
         sl = max(sl, p_low + 0.5*buf_low)
 
+    # 수수료/슬리피지 보정
+    tp = tp * (1 - FEES_PCT) - SLIPPAGE
+    sl = sl * (1 + FEES_PCT) + SLIPPAGE
+
+    # 틱 반올림
+    t_entry = tick_fn(entry, code)
+    t_tp    = tick_fn(tp, code)
+    t_sl    = tick_fn(sl, code)
+    entry = round_to_tick(entry, t_entry, mode="down")     # 매수는 보수적으로 낮게
+    tp    = round_to_tick(tp,    t_tp,    mode="down")     # 익절은 약간 낮게
+    sl    = round_to_tick(sl,    t_sl,    mode="up")       # 손절은 약간 높게(더 타이트)
+
     rr = (tp - entry) / (entry - sl) if (entry - sl) > 0 else np.nan
     return {
         "매수가(entry)": round(entry, 2),
         "익절가(tp)"   : round(tp, 2),
         "손절가(sl)"   : round(sl, 2),
         "RR"          : round(rr, 2),
-        "buf_close"   : round(buf_close, 2)
+        "buf_close"   : round(buf_close, 3),
+        "buf_high"    : round(float(buf_high), 3) if pd.notna(buf_high) else np.nan,
+        "buf_low"     : round(float(buf_low), 3) if pd.notna(buf_low) else np.nan,
+        "ATR"         : round(float(atr_val), 3) if pd.notna(atr_val) else np.nan,
     }
 
+
+# ====== 추가 파라미터 ======
+def map_holding_days(h_sel: str) -> int:
+    return int(h_sel[1]) if h_sel in {"h1","h2","h3"} else 2
+
+
+def _to_dateset(dates_like: Optional[List[str]]) -> set:
+    if not dates_like:
+        return set()
+    out = set()
+    for s in dates_like:
+        try:
+            y,m,d = map(int, s.split("-"))
+            out.add(date(y,m,d))
+        except Exception:
+            continue
+    return out
+
+
+def calc_valid_until(holding_days: int, holidays: Optional[List[str]] = None) -> str:
+    tz = ZoneInfo("Asia/Seoul") if ZoneInfo else None
+    now = datetime.now(tz) if tz else datetime.now()
+    target = now + timedelta(days=holding_days)
+    hh, mm = DEFAULT_CLOSE_HHMM
+    target = target.replace(hour=hh, minute=mm, second=0, microsecond=0)
+
+    holi = _to_dateset(holidays)
+
+    def is_business_day(dt: datetime) -> bool:
+        d = dt.date()
+        if dt.weekday() >= 5:  # Sat/Sun
+            return False
+        if d in holi:
+            return False
+        return True
+
+    # 다음 영업일의 마감시각로 이동
+    while not is_business_day(target):
+        target += timedelta(days=1)
+        target = target.replace(hour=hh, minute=mm, second=0, microsecond=0)
+    return target.isoformat()
+
+
+def _sigmoid(x: float) -> float:
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def compute_confidence(row, h_sel: str) -> float:
+    mape = row.get(f"{h_sel}_close_MAPE(%)", np.nan)
+    da   = row.get(f"{h_sel}_close_DirAcc(%)", np.nan)
+    bias = abs(row.get(f"{h_sel}_close_Bias", np.nan)) if pd.notna(row.get(f"{h_sel}_close_Bias", np.nan)) else np.nan
+    mae  = row.get(f"{h_sel}_close_MAE", np.nan)
+    cnt  = row.get(f"{h_sel}_close_count", np.nan)
+
+    # 로지스틱 스무딩: 기준 대비 여유가 클수록 1에 가깝게
+    # MAPE: 낮을수록 좋음 → (MAPE_MAX - mape) 정규화
+    if pd.notna(mape):
+        x_m = (MAPE_MAX - mape) / max(MAPE_MAX, 1e-6)
+        s_mape = _sigmoid(SIG_K_M * x_m)
+    else:
+        s_mape = 0.5
+
+    if pd.notna(da):
+        x_d = (da - DIRACC_MIN) / max(100 - DIRACC_MIN, 1e-6)
+        s_da = _sigmoid(SIG_K_DA * 10 * x_d)  # 0~1 구간 확대
+    else:
+        s_da = 0.5
+
+    if (pd.notna(bias) and pd.notna(mae) and mae>0):
+        ratio = bias / (BIAS_MAE_RATIO_MAX * mae)
+        s_bias = _sigmoid( -4.0 * (ratio - 1.0) )  # ratio<1 우수 → >1 급감
+    else:
+        s_bias = 0.5
+
+    if pd.notna(cnt):
+        s_cnt = min(cnt/120.0, 1.0)  # 표본 120 이상은 만점(완만화)
+    else:
+        s_cnt = 0.5
+
+    conf = (WC_MAPE*s_mape + WC_DA*s_da + WC_BIAS*s_bias + WC_CNT*s_cnt) / (WC_MAPE+WC_DA+WC_BIAS+WC_CNT)
+    return round(float(conf), 3)
+
+
+def size_order_qty(entry: float, sl: float,
+                   equity: Optional[float],
+                   risk_pct: Optional[float],
+                   min_qty: int,
+                   code: str,
+                   tick_fn: TickSizeFn = default_tick_size):
+    if not equity or not risk_pct or risk_pct <= 0:
+        return max(min_qty, 1), None
+    per_share_risk_raw = (entry - sl)
+    tick = tick_fn(entry, code)
+    per_share_risk = max(per_share_risk_raw, tick)
+    # 수수료/슬리피지 추가 반영 (보수적):
+    per_share_risk += (entry * FEES_PCT + SLIPPAGE)
+    qty = int(np.floor((equity * risk_pct) / max(per_share_risk, 1e-6)))
+    return max(qty, min_qty), float(risk_pct)
+
+
+def decide_side(last_close: float,
+                last_pred_close: float,
+                buf_close: float,
+                diracc: float,
+                allow_short: bool=False,
+                z_th_long: float=+0.1,
+                z_th_short: float=-0.3) -> str:
+    """z = (pred - last)/buf_close 를 변동성 표준화 근사로 사용.
+       DirAcc가 낮으면 숏 임계 완화, 높으면 롱 선호.
+    """
+    if pd.isna(last_pred_close) or pd.isna(last_close) or pd.isna(buf_close) or buf_close <= 0:
+        return "BUY"  # 정보 부족 시 기본 BUY
+    z = (last_pred_close - last_close) / buf_close
+    adj_short = z_th_short + (0.5 - (diracc or 50)/100.0) * 0.2  # DirAcc 낮을수록 숏 관대
+    adj_long  = z_th_long  + ((diracc or 50)/100.0 - 0.5) * 0.2  # DirAcc 높을수록 롱 관대
+    if allow_short and z <= adj_short:
+        return "SELL"
+    if z >= adj_long:
+        return "BUY"
+    # 중립대 → 추세 우위로
+    return "BUY" if (diracc or 50) >= 55 else ("SELL" if allow_short else "BUY")
+
+
+# ====== 심볼 평가 ======
 def evaluate_symbol(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     if "date" in df.columns:
@@ -201,71 +420,36 @@ def evaluate_symbol(df: pd.DataFrame) -> pd.DataFrame:
         wide[f"{h}_close_Dir_count"] = dirres["Dir_count"]
 
     last_true = df["true_close"].dropna().iloc[-1] if "true_close" in df.columns and df["true_close"].notna().any() else np.nan
-    wide["last_true_close"] = last_true
+    if pd.isna(last_true):
+        # Fallback 우선순위: 직전 true_close → rolling median → 마지막 pred_close 중 하나
+        if "true_close" in df.columns and df["true_close"].notna().sum() >= 2:
+            last_true = df["true_close"].dropna().iloc[-2]
+        elif "true_close" in df.columns:
+            last_true = df["true_close"].rolling(5, min_periods=1).median().iloc[-1]
+    wide["last_true_close"] = last_true if pd.notna(last_true) else np.nan
+
     last_row = df.iloc[-1]
     for h in HORIZONS:
         for t in TARGETS:
             wide[f"last_pred_{h}_{t}"] = last_row.get(f"pred_{h}_{t}", np.nan)
 
+    # ATR 계산
+    wide["ATR14"] = _calc_atr(df, ATR_PERIOD)
+
     return pd.DataFrame([wide])
 
-# ====== 추가 파라미터 ======
-def map_holding_days(h_sel: str) -> int:
-    return int(h_sel[1]) if h_sel in {"h1","h2","h3"} else 2
 
-def calc_valid_until(holding_days: int) -> str:
-    tz = ZoneInfo("Asia/Seoul") if ZoneInfo else None
-    now = datetime.now(tz) if tz else datetime.now()
-    target = now + timedelta(days=holding_days)
-    hh, mm = DEFAULT_CLOSE_HHMM
-    target = target.replace(hour=hh, minute=mm, second=0, microsecond=0)
-    if target.weekday() == 5:   # Sat
-        target += timedelta(days=2)
-    elif target.weekday() == 6: # Sun
-        target += timedelta(days=1)
-        target = target.replace(hour=hh, minute=mm, second=0, microsecond=0)
-    return target.isoformat()
-
-def compute_confidence(row, h_sel: str) -> float:
-    mape = row.get(f"{h_sel}_close_MAPE(%)", np.nan)
-    da   = row.get(f"{h_sel}_close_DirAcc(%)", np.nan)
-    bias = abs(row.get(f"{h_sel}_close_Bias", np.nan)) if pd.notna(row.get(f"{h_sel}_close_Bias", np.nan)) else np.nan
-    mae  = row.get(f"{h_sel}_close_MAE", np.nan)
-    cnt  = row.get(f"{h_sel}_close_count", np.nan)
-    s_mape = 1 - min((mape or np.inf)/MAPE_MAX, 1) if pd.notna(mape) else 0.5
-    s_da   = min(max(((da or 0) - 50) / (DIRACC_MIN - 50 if DIRACC_MIN>50 else 5), 0), 1) if pd.notna(da) else 0.5
-    s_bias = max(1 - (bias / (BIAS_MAE_RATIO_MAX * mae)) , 0) if (pd.notna(bias) and pd.notna(mae) and mae>0) else 0.5
-    s_cnt  = min((cnt or 0)/60.0, 1) if pd.notna(cnt) else 0.5
-    conf = (WC_MAPE*s_mape + WC_DA*s_da + WC_BIAS*s_bias + WC_CNT*s_cnt) / (WC_MAPE+WC_DA+WC_BIAS+WC_CNT)
-    return round(float(conf), 3)
-
-def size_order_qty(entry: float, sl: float,
-                   equity: Optional[float],
-                   risk_pct: Optional[float],
-                   min_qty: int = 1):
-    if not equity or not risk_pct or risk_pct <= 0:
-        return max(min_qty, 1), None
-    per_share_risk = max(entry - sl, 1.0)
-    qty = int(np.floor((equity * risk_pct) / per_share_risk))
-    return max(qty, min_qty), float(risk_pct)
-
-def decide_side(last_close: float, last_pred_close: float, buf_close: float, allow_short: bool=False) -> str:
-    if allow_short and (pd.notna(last_pred_close) and pd.notna(last_close) and pd.notna(buf_close)):
-        if last_pred_close <= (last_close - 0.8*buf_close):
-            return "SELL"
-    return "BUY"
-
-
-# ====== 핵심: 파일별 처리 후 누적 ======
+# ====== 파일별 처리 ======
 def process_one_file(csv_path: Path,
                      equity: Optional[float],
                      risk_pct: Optional[float],
-                     allow_short: bool) -> List[dict]:
-    """단일 CSV 파일을 처리하여 결과 행(dict) 목록 반환"""
+                     allow_short: bool,
+                     tick_fn: TickSizeFn,
+                     holidays: Optional[List[str]]) -> List[dict]:
     try:
         df = pd.read_csv(csv_path, dtype={"code": str})
     except Exception as e:
-        print(f"[WARN] read fail: {csv_path.name} -> {e}")
+        logging.warning(f"read fail: {csv_path.name} -> {e}")
         return []
 
     if "code" in df.columns:
@@ -274,34 +458,32 @@ def process_one_file(csv_path: Path,
         df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
     results = []
-    # 파일 안에 여러 종목이 들어 있을 수 있으므로 groupby
     if not {"name","code"}.issubset(df.columns):
-        print(f"[WARN] skip {csv_path.name}: required columns 'name','code' not found")
+        logging.warning(f"skip {csv_path.name}: required columns 'name','code' not found")
         return results
 
     for (name, code), g in df.groupby(["name","code"], dropna=False):
         wide = evaluate_symbol(g)
         wrow = wide.iloc[0].to_dict()
-        best_h, explain = pick_horizon(wrow)
+        best_h, explain, flags = pick_horizon(wrow)
 
         last_true = wrow.get("last_true_close", np.nan)
-        if pd.notna(last_true):
-            last_close = last_true
-        else:
-            last_close = wrow.get(f"last_pred_{best_h}_close", np.nan)
+        last_close = last_true if pd.notna(last_true) else wrow.get(f"last_pred_{best_h}_close", np.nan)
 
         last_pred = {
             "close": wrow.get(f"last_pred_{best_h}_close", np.nan),
             "high":  wrow.get(f"last_pred_{best_h}_high",  np.nan),
             "low":   wrow.get(f"last_pred_{best_h}_low",   np.nan),
         }
-        lv = compute_levels(wrow, best_h, last_close, last_pred)
+        atr_val = wrow.get("ATR14", np.nan)
+        lv = compute_levels(wrow, best_h, last_close, last_pred, atr_val, code, tick_fn)
 
         conf = compute_confidence(wrow, best_h)
         holding_days = map_holding_days(best_h)
-        valid_until  = calc_valid_until(holding_days)
-        qty, risk_used = size_order_qty(lv["매수가(entry)"], lv["손절가(sl)"], equity, risk_pct, min_qty=1)
-        side = decide_side(last_close, last_pred["close"], lv["buf_close"], allow_short=allow_short)
+        valid_until  = calc_valid_until(holding_days, holidays=holidays)
+        qty, risk_used = size_order_qty(lv["매수가(entry)"], lv["손절가(sl)"], equity, risk_pct, min_qty=1, code=code, tick_fn=tick_fn)
+        diracc = wrow.get(f"{best_h}_close_DirAcc(%)", np.nan)
+        side = decide_side(last_close, last_pred["close"], lv["buf_close"], diracc, allow_short=allow_short)
 
         res = {
             "source_file": csv_path.name,
@@ -319,26 +501,42 @@ def process_one_file(csv_path: Path,
             "side": side,
             "confidence": conf,
             "holding_days": holding_days,
-            "valid_until": valid_until
+            "valid_until": valid_until,
+            # 부가정보
+            "ex_base_h1": explain["h1"]["base"], "ex_pen_h1": explain["h1"]["penalty"],
+            "ex_base_h2": explain["h2"]["base"], "ex_pen_h2": explain["h2"]["penalty"],
+            "ex_base_h3": explain["h3"]["base"], "ex_pen_h3": explain["h3"]["penalty"],
+            "flags_h1": ";".join(flags["h1"]), "flags_h2": ";".join(flags["h2"]), "flags_h3": ";".join(flags["h3"]),
         }
         if risk_used is not None:
             res["risk_cap_used"] = risk_used
+
+        # RR 비정상 시 경고 플래그
+        if not pd.notna(res.get("RR")) or res.get("RR", 0) <= 0:
+            res["warn_bad_RR"] = 1
+        else:
+            res["warn_bad_RR"] = 0
+
         results.append(res)
     return results
 
 
-def make_trade_price(cfg, equity: Optional[float]=None, risk_pct: Optional[float]=None,
-                 allow_short: bool=False) -> pd.DataFrame:
-    
+# ====== 배치 러너 ======
+def make_trade_price(cfg,
+                     equity: Optional[float]=None,
+                     risk_pct: Optional[float]=None,
+                     allow_short: bool=False,
+                     tick_fn: TickSizeFn = default_tick_size,
+                     holidays: Optional[List[str]] = None) -> pd.DataFrame:
+
     base_dir = Path(cfg.predict_dir) / f"{cfg.end_date}"
     files = sorted(base_dir.glob("*.csv"))
-    
     if not files:
         raise FileNotFoundError(f"No CSV found in: {base_dir}")
 
     all_rows: List[dict] = []
     for fp in files:
-        rows = process_one_file(fp, equity=equity, risk_pct=risk_pct, allow_short=allow_short)
+        rows = process_one_file(fp, equity=equity, risk_pct=risk_pct, allow_short=allow_short, tick_fn=tick_fn, holidays=holidays)
         if rows:
             all_rows.extend(rows)
 
@@ -348,38 +546,81 @@ def make_trade_price(cfg, equity: Optional[float]=None, risk_pct: Optional[float
     out = pd.DataFrame(all_rows)
 
     # 보기 좋은 컬럼 순서
-    order = ["source_file","종목명","종목코드","권장호라이즌","last_close",
-             "매수가(entry)","익절가(tp)","손절가(sl)","RR",
-             "ord_qty","side","confidence","holding_days","valid_until",
-             "요약점수(h1)","요약점수(h2)","요약점수(h3)",
-             "h1_close_MAPE(%)","h2_close_MAPE(%)","h3_close_MAPE(%)",
-             "h1_close_DirAcc(%)","h2_close_DirAcc(%)","h3_close_DirAcc(%)"]
+    order = [
+        "source_file","종목명","종목코드","권장호라이즌","last_close",
+        "매수가(entry)","익절가(tp)","손절가(sl)","RR",
+        "ord_qty","side","confidence","holding_days","valid_until",
+        "ATR","buf_close","buf_high","buf_low",
+        "요약점수(h1)","요약점수(h2)","요약점수(h3)",
+        "h1_close_MAPE(%)","h2_close_MAPE(%)","h3_close_MAPE(%)",
+        "h1_close_DirAcc(%)","h2_close_DirAcc(%)","h3_close_DirAcc(%)",
+        "ex_base_h1","ex_pen_h1","ex_base_h2","ex_pen_h2","ex_base_h3","ex_pen_h3",
+        "flags_h1","flags_h2","flags_h3","warn_bad_RR"
+    ]
     cols = [c for c in order if c in out.columns] + [c for c in out.columns if c not in order]
     out = out[cols]
 
-    report_dir = Path(cfg.report_dir) / f"Report_{cfg.end_date}"
+    # 저장 경로
+    report_dir = Path(getattr(cfg, 'report_dir', './reports')) / f"Report_{cfg.end_date}"
     report_dir.mkdir(parents=True, exist_ok=True)
-    filename = f"Trading_price_{cfg.end_date}.csv"
+    filename = getattr(cfg, 'out', f"Trading_price_{cfg.end_date}.csv")
     out_path = report_dir / filename
 
     try:
         out.to_csv(out_path, index=False, encoding="utf-8-sig")
     except PermissionError as e:
-        # Common cause: file is open in Excel or locked by another process.
-        # Attempt to save to a timestamped alternative filename and warn the user.
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        alt_path = report_dir / f"Trading_price_{cfg.end_date}_{ts}.csv"
+        alt_path = report_dir / f"{Path(filename).stem}_{ts}.csv"
         try:
             out.to_csv(alt_path, index=False, encoding="utf-8-sig")
-            print(f"[WARN] could not write {out_path!s} (permission denied). Saved to {alt_path!s} instead.")
+            logging.warning(f"could not write {out_path!s} (permission denied). Saved to {alt_path!s} instead.")
             out_path = alt_path
         except Exception as e2:
-            # If even the alternative fails, re-raise the original PermissionError with context.
             raise PermissionError(f"Failed to save report to '{out_path}' and alternative '{alt_path}': {e2}") from e
     else:
-        print(f"[OK] saved -> {out_path}")
+        logging.info(f"saved -> {out_path}")
     return out
 
-   #--equity", type=float, default=None, help="계좌 총자산(원). 리스크 기반 수량 산정에 사용")
-   #"--risk-pct", type=float, default=None, help="트레이드당 허용 위험 비율(예: 0.005=0.5%)")
-   #"--allow-short", action="store_true", help="하락 예측 시 SELL 허용")
+
+# ====== CLI ======
+def build_argparser():
+    p = argparse.ArgumentParser()
+    p.add_argument('--predict-dir', required=True)
+    p.add_argument('--end-date', required=True)
+    p.add_argument('--report-dir', default='./reports')
+    p.add_argument('--out', default=None, help='출력 파일명(기본 Trading_price_<end_date>.csv)')
+    p.add_argument('--equity', type=float, default=None, help='계좌 총자산(원). 리스크 기반 수량 산정에 사용')
+    p.add_argument('--risk-pct', type=float, default=None, help='트레이드당 허용 위험 비율(예: 0.005=0.5%)')
+    p.add_argument('--allow-short', action='store_true', help='하락 예측 시 SELL 허용')
+    p.add_argument('--holidays', default=None, help='휴일 목록 CSV 경로(YYYY-MM-DD 한 열)')
+    return p
+
+
+def _load_holidays(path: Optional[str]) -> Optional[List[str]]:
+    if not path:
+        return None
+    try:
+        s = pd.read_csv(path, header=None)[0].astype(str).tolist()
+        return s
+    except Exception as e:
+        logging.warning(f"holidays read fail: {e}")
+        return None
+
+
+if __name__ == '__main__':
+    args = build_argparser().parse_args()
+    class Cfg: pass
+    cfg = Cfg()
+    cfg.predict_dir = args.predict_dir
+    cfg.end_date    = args.end_date
+    cfg.report_dir  = args.report_dir
+    cfg.out         = args.out or f"Trading_price_{cfg.end_date}.csv"
+
+    holidays = _load_holidays(args.holidays)
+
+    make_trade_price(cfg,
+                     equity=args.equity,
+                     risk_pct=args.risk_pct,
+                     allow_short=args.allow_short,
+                     tick_fn=default_tick_size,
+                     holidays=holidays)

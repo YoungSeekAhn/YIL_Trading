@@ -3,29 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>자동매매 리포트</title>
+<title>YIL-LABs 자동매매 리포트</title>
 <style>
-:root {
-  --bg:#0b0f15; --card:#101722; --muted:#8aa0b2; --txt:#e7eef6;
-  --green:#1fb981; --blue:#3b82f6; --amber:#f59e0b; --red:#ef4444; --gray:#6b7280;
-  --line:#1f2a37; --mono:#cbd5e1;
-}
-*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Noto Sans KR, Arial, sans-serif}
-.container{max-width:1200px;margin:24px auto;padding:0 16px}
+:root { --bg:#0b0f15; --card:#101722; --muted:#8aa0b2; --txt:#e7eef6; --green:#1fb981; --blue:#3b82f6; --amber:#f59e0b; --red:#ef4444; --gray:#6b7280; --line:#1f2a37; --mono:#cbd5e1; }
+*{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Noto Sans KR,Arial,sans-serif}
+.container{max-width:1280px;margin:24px auto;padding:0 16px}
 h1{font-size:22px;margin:8px 0 4px} .muted{color:var(--muted)}
 .kpi{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0}
 .kpi .box{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
 .kpi .k{font-size:12px;color:var(--muted)} .kpi .v{font-size:20px;font-weight:700}
 .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
-.badge{background:#0f172a;border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--muted)}
-.badge b{color:var(--txt)}
+.badge{background:#0f172a;border:1px solid var(--line);border-radius:999px;padding:6px 10px;color:var(--muted)} .badge b{color:var(--txt)}
 .controls{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
 input[type="search"],select{padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0b1220;color:var(--txt)}
 .tablewrap{overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
-table{border-collapse:collapse;width:100%;font-size:13px;min-width:900px}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:960px}
 th,td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left;white-space:nowrap}
 th{background:#0d1420;position:sticky;top:0;z-index:1;cursor:pointer}
-td.num{text-align:right} .mono{font-family:ui-monospace, SFMono-Regular, Menlo, monospace;color:var(--mono)}
+td.num{text-align:right} .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mono)}
 .tag{padding:2px 8px;border-radius:999px;border:1px solid var(--line)}
 .tag-green{background:rgba(31,185,129,.15);color:#8ff1cc;border-color:rgba(31,185,129,.35)}
 .tag-blue{background:rgba(59,130,246,.15);color:#b7d4ff;border-color:rgba(59,130,246,.35)}
@@ -38,35 +33,38 @@ td.num{text-align:right} .mono{font-family:ui-monospace, SFMono-Regular, Menlo, 
 .side-sell{background:rgba(239,68,68,.15);color:#ffb3b3}
 .side-unknown{background:#111827;color:#9ca3af}
 .bar{height:6px;background:#0b1220;border:1px solid var(--line);border-radius:999px;overflow:hidden;min-width:120px}
-.bar.big{height:10px;min-width:180px}
+.bar.big{height:10px;min-width:220px}
 .fill{height:100%}
-.fill.bar-80{background:linear-gradient(90deg, #1fb981, #3b82f6)}
+.fill.bar-80{background:linear-gradient(90deg,#1fb981,#3b82f6)}
 .fill.bar-60{background:#3b82f6}
 .fill.bar-40{background:#38bdf8}
 .fill.bar-20{background:#f59e0b}
 .fill.bar-0{background:#374151}
 .bar-text{font-size:11px;color:var(--muted);margin-top:4px}
-.cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;margin-top:16px}
+.cardgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-top:16px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
 .card-hd{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
 .card .title{font-weight:700} .pill{background:#0d1420;border:1px solid var(--line);border-radius:999px;padding:4px 10px;color:var(--muted)}
-.card .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.card .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .card .k{font-size:11px;color:var(--muted)} .card .v{font-weight:600}
+.alink{color:#93c5fd;text-decoration:none} .alink:hover{text-decoration:underline}
+/* 투자 가능/불가 행 강조 */
+tr.row-invest{background:rgba(31,185,129,.08)}
+tr.row-non{background:rgba(239,68,68,.06)}
+/* 가독성: 특정 열 최소폭 */
+th:nth-child(1){min-width:120px} th:nth-child(2){min-width:90px} th:nth-child(10){min-width:90px} th:nth-child(13){min-width:120px}
 footer{color:var(--muted);font-size:12px;margin:12px 0}
-@media (max-width:900px) {
-  .kpi{grid-template-columns:repeat(2,1fr)}
-  .card .grid{grid-template-columns:repeat(2,1fr)}
-}
+@media (max-width:900px){.kpi{grid-template-columns:repeat(2,1fr)}.card .grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>자동매매 리포트 <span class="muted">(생성: 2025-09-28 15:36)</span></h1>
+  <h1>자동매매 리포트 <span class="muted">(생성: 2025-10-10 14:19)</span></h1>
 
   <div class="kpi">
     <div class="box"><div class="k">종목 수</div><div class="v">10</div></div>
-    <div class="box"><div class="k">평균 RR</div><div class="v">2.41</div></div>
-    <div class="box"><div class="k">평균 신뢰도</div><div class="v">0.186</div></div>
+    <div class="box"><div class="k">평균 RR</div><div class="v">2.43</div></div>
+    <div class="box"><div class="k">평균 신뢰도</div><div class="v">0.447</div></div>
     <div class="box"><div class="k">포지션</div><div class="v">BUY 10 / SELL 0</div></div>
     <div class="box"><div class="k">호라이즌 분포</div><div class="badges"><span class="badge">H1(1일) <b>5</b></span> <span class="badge">H2(2일) <b>3</b></span> <span class="badge">H3(3일) <b>2</b></span></div></div>
   </div>
@@ -84,8 +82,8 @@ footer{color:var(--muted);font-size:12px;margin:12px 0}
       <option value="BUY">BUY</option>
       <option value="SELL">SELL</option>
     </select>
-    <label>최소 신뢰도 <input id="minc" type="range" min="0" max="100" value="0" oninput="showC(this.value);filterTable()"></label>
-    <span id="minc_val" class="muted">0%</span>
+    <label>최소 신뢰도 <input id="minc" type="range" min="0" max="100" value="50" oninput="showC(this.value);filterTable()"></label>
+    <span id="minc_val" class="muted">50%</span>
     <label>최소 RR <input id="minrr" type="number" step="0.1" value="0" style="width:80px" oninput="filterTable()"></label>
   </div>
 
@@ -105,210 +103,210 @@ footer{color:var(--muted);font-size:12px;margin:12px 0}
           <th onclick="sortTable(9)">포지션</th>
           <th onclick="sortTable(10)">신뢰도</th>
           <th onclick="sortTable(11)">보유일</th>
-          <th onclick="sortTable(12)">유효기한</th>
-          <th onclick="sortTable(13)">파일</th>
+          <th onclick="sortTable(12)">유효기간</th>
+          
         </tr>
       </thead>
       <tbody>
         
-<tr>
-  <td>HD현대인프라코어</td>
-  <td>042670</td>
-  <td><span class="hz">H1(1일)</span></td>
-  <td class="num">16,020</td>
-  <td class="num">15,658.64</td>
-  <td class="num">18,621.78</td>
-  <td class="num">14,574.57</td>
-  <td class="num"><span class="tag tag-green">2.73</span></td>
-  <td class="num">1</td>
-  <td><span class="side side-buy">BUY</span></td>
-  <td>
-    <div class="bar"><div class="fill bar-0" style="width:7%;"></div></div>
-    <div class="bar-text">0.072</div>
-  </td>
-  <td class="num">1</td>
-  <td class="mono">2025-09-29T15:20:00+09:00</td>
-  <td class="mono">pred_HD현대인프라코어_042670.csv</td>
-</tr>
-
-<tr>
-  <td>LG디스플레이</td>
-  <td>034220</td>
-  <td><span class="hz">H2(2일)</span></td>
-  <td class="num">13,650</td>
-  <td class="num">13,550.65</td>
-  <td class="num">14,365.32</td>
-  <td class="num">13,252.60</td>
-  <td class="num"><span class="tag tag-green">2.73</span></td>
-  <td class="num">1</td>
-  <td><span class="side side-buy">BUY</span></td>
-  <td>
-    <div class="bar"><div class="fill bar-0" style="width:7%;"></div></div>
-    <div class="bar-text">0.070</div>
-  </td>
-  <td class="num">2</td>
-  <td class="mono">2025-09-30T15:20:00+09:00</td>
-  <td class="mono">pred_LG디스플레이_034220.csv</td>
-</tr>
-
-<tr>
-  <td>LG이노텍</td>
-  <td>011070</td>
-  <td><span class="hz">H1(1일)</span></td>
-  <td class="num">196,900</td>
-  <td class="num">196,087.05</td>
-  <td class="num">202,753.21</td>
-  <td class="num">193,648.22</td>
-  <td class="num"><span class="tag tag-green">2.73</span></td>
-  <td class="num">1</td>
-  <td><span class="side side-buy">BUY</span></td>
-  <td>
-    <div class="bar"><div class="fill bar-20" style="width:22%;"></div></div>
-    <div class="bar-text">0.221</div>
-  </td>
-  <td class="num">1</td>
-  <td class="mono">2025-09-29T15:20:00+09:00</td>
-  <td class="mono">pred_LG이노텍_011070.csv</td>
-</tr>
-
-<tr>
-  <td>SK스퀘어</td>
-  <td>402340</td>
-  <td><span class="hz">H1(1일)</span></td>
-  <td class="num">217,499.99</td>
-  <td class="num">216,377.74</td>
-  <td class="num">225,580.15</td>
-  <td class="num">213,011.01</td>
-  <td class="num"><span class="tag tag-green">2.73</span></td>
-  <td class="num">1</td>
-  <td><span class="side side-buy">BUY</span></td>
-  <td>
-    <div class="bar"><div class="fill bar-20" style="width:32%;"></div></div>
-    <div class="bar-text">0.323</div>
-  </td>
-  <td class="num">1</td>
-  <td class="mono">2025-09-29T15:20:00+09:00</td>
-  <td class="mono">pred_SK스퀘어_402340.csv</td>
-</tr>
-
-<tr>
-  <td>삼성물산</td>
-  <td>028260</td>
-  <td><span class="hz">H3(3일)</span></td>
-  <td class="num">193,700</td>
-  <td class="num">192,462.24</td>
-  <td class="num">194,041.77</td>
-  <td class="num">201,331.68</td>
-  <td class="num"><span class="tag tag-gray"></span></td>
-  <td class="num">1</td>
-  <td><span class="side side-buy">BUY</span></td>
-  <td>
-    <div class="bar"><div class="fill bar-0" style="width:14%;"></div></div>
-    <div class="bar-text">0.145</div>
-  </td>
-  <td class="num">3</td>
-  <td class="mono">2025-10-01T15:20:00+09:00</td>
-  <td class="mono">pred_삼성물산_028260.csv</td>
-</tr>
-
-<tr>
-  <td>삼성전자</td>
-  <td>005930</td>
-  <td><span class="hz">H1(1일)</span></td>
-  <td class="num">85,400</td>
-  <td class="num">85,069.95</td>
-  <td class="num">87,776.36</td>
-  <td class="num">84,079.79</td>
-  <td class="num"><span class="tag tag-green">2.73</span></td>
-  <td class="num">1</td>
-  <td><span class="side side-buy">BUY</span></td>
-  <td>
-    <div class="bar"><div class="fill bar-0" style="width:18%;"></div></div>
-    <div class="bar-text">0.183</div>
-  </td>
-  <td class="num">1</td>
-  <td class="mono">2025-09-29T15:20:00+09:00</td>
-  <td class="mono">pred_삼성전자_005930.csv</td>
-</tr>
-
-<tr>
-  <td>신세계</td>
-  <td>004170</td>
-  <td><span class="hz">H1(1일)</span></td>
-  <td class="num">193,400</td>
-  <td class="num">192,580.88</td>
-  <td class="num">199,297.65</td>
-  <td class="num">190,123.53</td>
-  <td class="num"><span class="tag tag-green">2.73</span></td>
-  <td class="num">1</td>
-  <td><span class="side side-buy">BUY</span></td>
-  <td>
-    <div class="bar"><div class="fill bar-0" style="width:17%;"></div></div>
-    <div class="bar-text">0.179</div>
-  </td>
-  <td class="num">1</td>
-  <td class="mono">2025-09-29T15:20:00+09:00</td>
-  <td class="mono">pred_신세계_004170.csv</td>
-</tr>
-
-<tr>
-  <td>지역난방공사</td>
-  <td>071320</td>
-  <td><span class="hz">H3(3일)</span></td>
-  <td class="num">90,300</td>
-  <td class="num">89,628.98</td>
-  <td class="num">89,262.53</td>
-  <td class="num">87,615.91</td>
-  <td class="num"><span class="tag tag-red">-0.18</span></td>
-  <td class="num">1</td>
-  <td><span class="side side-buy">BUY</span></td>
-  <td>
-    <div class="bar"><div class="fill bar-0" style="width:9%;"></div></div>
-    <div class="bar-text">0.093</div>
-  </td>
-  <td class="num">3</td>
-  <td class="mono">2025-10-01T15:20:00+09:00</td>
-  <td class="mono">pred_지역난방공사_071320.csv</td>
-</tr>
-
-<tr>
+<tr class="row-invest" data-hz="h2">
   <td>한미약품</td>
   <td>128940</td>
   <td><span class="hz">H2(2일)</span></td>
-  <td class="num">393,000.01</td>
-  <td class="num">390,758.50</td>
-  <td class="num">409,138.87</td>
-  <td class="num">384,033.97</td>
-  <td class="num"><span class="tag tag-green">2.73</span></td>
+  <td class="num">393,000</td>
+  <td class="num">390,380</td>
+  <td class="num">411,810</td>
+  <td class="num">382,560</td>
+  <td class="num"><span class="tag tag-green">2.74</span></td>
   <td class="num">1</td>
   <td><span class="side side-buy">BUY</span></td>
   <td>
-    <div class="bar"><div class="fill bar-20" style="width:35%;"></div></div>
-    <div class="bar-text">0.358</div>
+    <div class="bar"><div class="fill bar-40" style="width:54%;"></div></div>
+    <div class="bar-text">0.548</div>
   </td>
   <td class="num">2</td>
-  <td class="mono">2025-09-30T15:20:00+09:00</td>
-  <td class="mono">pred_한미약품_128940.csv</td>
+  <td class="mono">2025-10-13</td>
+  
 </tr>
 
-<tr>
+<tr class="row-invest" data-hz="h1">
+  <td>SK스퀘어</td>
+  <td>402340</td>
+  <td><span class="hz">H1(1일)</span></td>
+  <td class="num">217,500</td>
+  <td class="num">215,860</td>
+  <td class="num">229,290</td>
+  <td class="num">210,950</td>
+  <td class="num"><span class="tag tag-green">2.74</span></td>
+  <td class="num">1</td>
+  <td><span class="side side-buy">BUY</span></td>
+  <td>
+    <div class="bar"><div class="fill bar-40" style="width:54%;"></div></div>
+    <div class="bar-text">0.547</div>
+  </td>
+  <td class="num">1</td>
+  <td class="mono">2025-10-13</td>
+  
+</tr>
+
+<tr class="row-invest" data-hz="h2">
   <td>호텔신라</td>
   <td>008770</td>
   <td><span class="hz">H2(2일)</span></td>
   <td class="num">55,000</td>
-  <td class="num">54,648.24</td>
-  <td class="num">57,532.64</td>
-  <td class="num">53,592.97</td>
-  <td class="num"><span class="tag tag-green">2.73</span></td>
+  <td class="num">54,640</td>
+  <td class="num">57,530</td>
+  <td class="num">53,600</td>
+  <td class="num"><span class="tag tag-green">2.78</span></td>
   <td class="num">1</td>
   <td><span class="side side-buy">BUY</span></td>
   <td>
-    <div class="bar"><div class="fill bar-20" style="width:21%;"></div></div>
-    <div class="bar-text">0.213</div>
+    <div class="bar"><div class="fill bar-40" style="width:52%;"></div></div>
+    <div class="bar-text">0.521</div>
   </td>
   <td class="num">2</td>
-  <td class="mono">2025-09-30T15:20:00+09:00</td>
-  <td class="mono">pred_호텔신라_008770.csv</td>
+  <td class="mono">2025-10-13</td>
+  
+</tr>
+
+<tr class="row-invest" data-hz="h1">
+  <td>LG이노텍</td>
+  <td>011070</td>
+  <td><span class="hz">H1(1일)</span></td>
+  <td class="num">196,900</td>
+  <td class="num">195,900</td>
+  <td class="num">204,090</td>
+  <td class="num">192,910</td>
+  <td class="num"><span class="tag tag-green">2.74</span></td>
+  <td class="num">1</td>
+  <td><span class="side side-buy">BUY</span></td>
+  <td>
+    <div class="bar"><div class="fill bar-40" style="width:51%;"></div></div>
+    <div class="bar-text">0.514</div>
+  </td>
+  <td class="num">1</td>
+  <td class="mono">2025-10-13</td>
+  
+</tr>
+
+<tr class="row-non" data-hz="h3">
+  <td>삼성물산</td>
+  <td>028260</td>
+  <td><span class="hz">H3(3일)</span></td>
+  <td class="num">193,700</td>
+  <td class="num">192,460</td>
+  <td class="num">194,040</td>
+  <td class="num">201,340</td>
+  <td class="num"><span class="tag tag-gray"></span></td>
+  <td class="num">1</td>
+  <td><span class="side side-buy">BUY</span></td>
+  <td>
+    <div class="bar"><div class="fill bar-40" style="width:46%;"></div></div>
+    <div class="bar-text">0.463</div>
+  </td>
+  <td class="num">3</td>
+  <td class="mono">2025-10-13</td>
+  
+</tr>
+
+<tr class="row-non" data-hz="h3">
+  <td>지역난방공사</td>
+  <td>071320</td>
+  <td><span class="hz">H3(3일)</span></td>
+  <td class="num">90,300</td>
+  <td class="num">89,620</td>
+  <td class="num">89,260</td>
+  <td class="num">87,620</td>
+  <td class="num"><span class="tag tag-red">-0.18</span></td>
+  <td class="num">1</td>
+  <td><span class="side side-buy">BUY</span></td>
+  <td>
+    <div class="bar"><div class="fill bar-40" style="width:45%;"></div></div>
+    <div class="bar-text">0.457</div>
+  </td>
+  <td class="num">3</td>
+  <td class="mono">2025-10-13</td>
+  
+</tr>
+
+<tr class="row-non" data-hz="h2">
+  <td>LG디스플레이</td>
+  <td>034220</td>
+  <td><span class="hz">H2(2일)</span></td>
+  <td class="num">13,650</td>
+  <td class="num">13,550</td>
+  <td class="num">14,360</td>
+  <td class="num">13,260</td>
+  <td class="num"><span class="tag tag-green">2.79</span></td>
+  <td class="num">1</td>
+  <td><span class="side side-buy">BUY</span></td>
+  <td>
+    <div class="bar"><div class="fill bar-40" style="width:41%;"></div></div>
+    <div class="bar-text">0.413</div>
+  </td>
+  <td class="num">2</td>
+  <td class="mono">2025-10-13</td>
+  
+</tr>
+
+<tr class="row-non" data-hz="h1">
+  <td>신세계</td>
+  <td>004170</td>
+  <td><span class="hz">H1(1일)</span></td>
+  <td class="num">193,400</td>
+  <td class="num">192,490</td>
+  <td class="num">199,940</td>
+  <td class="num">189,770</td>
+  <td class="num"><span class="tag tag-green">2.74</span></td>
+  <td class="num">1</td>
+  <td><span class="side side-buy">BUY</span></td>
+  <td>
+    <div class="bar"><div class="fill bar-40" style="width:41%;"></div></div>
+    <div class="bar-text">0.413</div>
+  </td>
+  <td class="num">1</td>
+  <td class="mono">2025-10-13</td>
+  
+</tr>
+
+<tr class="row-non" data-hz="h1">
+  <td>삼성전자</td>
+  <td>005930</td>
+  <td><span class="hz">H1(1일)</span></td>
+  <td class="num">85,400</td>
+  <td class="num">85,060</td>
+  <td class="num">87,770</td>
+  <td class="num">84,080</td>
+  <td class="num"><span class="tag tag-green">2.77</span></td>
+  <td class="num">1</td>
+  <td><span class="side side-buy">BUY</span></td>
+  <td>
+    <div class="bar"><div class="fill bar-40" style="width:40%;"></div></div>
+    <div class="bar-text">0.405</div>
+  </td>
+  <td class="num">1</td>
+  <td class="mono">2025-10-13</td>
+  
+</tr>
+
+<tr class="row-non" data-hz="h1">
+  <td>HD현대인프라코어</td>
+  <td>042670</td>
+  <td><span class="hz">H1(1일)</span></td>
+  <td class="num">16,020</td>
+  <td class="num">15,650</td>
+  <td class="num">18,620</td>
+  <td class="num">14,580</td>
+  <td class="num"><span class="tag tag-green">2.78</span></td>
+  <td class="num">1</td>
+  <td><span class="side side-buy">BUY</span></td>
+  <td>
+    <div class="bar"><div class="fill bar-0" style="width:18%;"></div></div>
+    <div class="bar-text">0.184</div>
+  </td>
+  <td class="num">1</td>
+  <td class="mono">2025-10-13</td>
+  
 </tr>
 
       </tbody>
@@ -318,67 +316,23 @@ footer{color:var(--muted);font-size:12px;margin:12px 0}
   <h2 style='margin-top:18px'>종목 카드</h2><div class='cardgrid'>
 <div class="card">
   <div class="card-hd">
-    <div class="title">HD현대인프라코어 <span class="muted">(042670)</span></div>
-    <div class="pill">H1(1일)</div>
-  </div>
-  <div class="grid">
-    <div><div class="k">현재가</div><div class="v">16,020</div></div>
-    <div><div class="k">매수가</div><div class="v">15,658.64</div></div>
-    <div><div class="k">익절가</div><div class="v">18,621.78</div></div>
-    <div><div class="k">손절가</div><div class="v">14,574.57</div></div>
-    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.73</span></div></div>
-    <div><div class="k">수량</div><div class="v">1</div></div>
-    <div><div class="k">유효기한</div><div class="v mono">2025-09-29T15:20:00+09:00</div></div>
-    <div><div class="k">파일</div><div class="v mono">pred_HD현대인프라코어_042670.csv</div></div>
-  </div>
-  <div class="conf">
-    <div class="conf-label">신뢰도</div>
-    <div class="bar big"><div class="fill bar-0" style="width:7%;"></div></div>
-    <div class="bar-text">0.072</div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-hd">
-    <div class="title">LG디스플레이 <span class="muted">(034220)</span></div>
+    <div class="title">한미약품 <span class="muted">(128940)</span></div>
     <div class="pill">H2(2일)</div>
   </div>
   <div class="grid">
-    <div><div class="k">현재가</div><div class="v">13,650</div></div>
-    <div><div class="k">매수가</div><div class="v">13,550.65</div></div>
-    <div><div class="k">익절가</div><div class="v">14,365.32</div></div>
-    <div><div class="k">손절가</div><div class="v">13,252.60</div></div>
-    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.73</span></div></div>
+    <div><div class="k">현재가</div><div class="v">393,000</div></div>
+    <div><div class="k">매수가</div><div class="v">390,380</div></div>
+    <div><div class="k">익절가</div><div class="v">411,810</div></div>
+    <div><div class="k">손절가</div><div class="v">382,560</div></div>
+    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.74</span></div></div>
     <div><div class="k">수량</div><div class="v">1</div></div>
-    <div><div class="k">유효기한</div><div class="v mono">2025-09-30T15:20:00+09:00</div></div>
-    <div><div class="k">파일</div><div class="v mono">pred_LG디스플레이_034220.csv</div></div>
+    <div><div class="k">보유일</div><div class="v">2</div></div>
+    <div><div class="k">유효기간</div><div class="v mono">2025-10-13</div></div>
   </div>
   <div class="conf">
     <div class="conf-label">신뢰도</div>
-    <div class="bar big"><div class="fill bar-0" style="width:7%;"></div></div>
-    <div class="bar-text">0.070</div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-hd">
-    <div class="title">LG이노텍 <span class="muted">(011070)</span></div>
-    <div class="pill">H1(1일)</div>
-  </div>
-  <div class="grid">
-    <div><div class="k">현재가</div><div class="v">196,900</div></div>
-    <div><div class="k">매수가</div><div class="v">196,087.05</div></div>
-    <div><div class="k">익절가</div><div class="v">202,753.21</div></div>
-    <div><div class="k">손절가</div><div class="v">193,648.22</div></div>
-    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.73</span></div></div>
-    <div><div class="k">수량</div><div class="v">1</div></div>
-    <div><div class="k">유효기한</div><div class="v mono">2025-09-29T15:20:00+09:00</div></div>
-    <div><div class="k">파일</div><div class="v mono">pred_LG이노텍_011070.csv</div></div>
-  </div>
-  <div class="conf">
-    <div class="conf-label">신뢰도</div>
-    <div class="bar big"><div class="fill bar-20" style="width:22%;"></div></div>
-    <div class="bar-text">0.221</div>
+    <div class="bar big"><div class="fill bar-40" style="width:54%;"></div></div>
+    <div class="bar-text">0.548</div>
   </div>
 </div>
 
@@ -388,129 +342,19 @@ footer{color:var(--muted);font-size:12px;margin:12px 0}
     <div class="pill">H1(1일)</div>
   </div>
   <div class="grid">
-    <div><div class="k">현재가</div><div class="v">217,499.99</div></div>
-    <div><div class="k">매수가</div><div class="v">216,377.74</div></div>
-    <div><div class="k">익절가</div><div class="v">225,580.15</div></div>
-    <div><div class="k">손절가</div><div class="v">213,011.01</div></div>
-    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.73</span></div></div>
+    <div><div class="k">현재가</div><div class="v">217,500</div></div>
+    <div><div class="k">매수가</div><div class="v">215,860</div></div>
+    <div><div class="k">익절가</div><div class="v">229,290</div></div>
+    <div><div class="k">손절가</div><div class="v">210,950</div></div>
+    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.74</span></div></div>
     <div><div class="k">수량</div><div class="v">1</div></div>
-    <div><div class="k">유효기한</div><div class="v mono">2025-09-29T15:20:00+09:00</div></div>
-    <div><div class="k">파일</div><div class="v mono">pred_SK스퀘어_402340.csv</div></div>
+    <div><div class="k">보유일</div><div class="v">1</div></div>
+    <div><div class="k">유효기간</div><div class="v mono">2025-10-13</div></div>
   </div>
   <div class="conf">
     <div class="conf-label">신뢰도</div>
-    <div class="bar big"><div class="fill bar-20" style="width:32%;"></div></div>
-    <div class="bar-text">0.323</div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-hd">
-    <div class="title">삼성물산 <span class="muted">(028260)</span></div>
-    <div class="pill">H3(3일)</div>
-  </div>
-  <div class="grid">
-    <div><div class="k">현재가</div><div class="v">193,700</div></div>
-    <div><div class="k">매수가</div><div class="v">192,462.24</div></div>
-    <div><div class="k">익절가</div><div class="v">194,041.77</div></div>
-    <div><div class="k">손절가</div><div class="v">201,331.68</div></div>
-    <div><div class="k">RR</div><div class="v"><span class="tag tag-gray"></span></div></div>
-    <div><div class="k">수량</div><div class="v">1</div></div>
-    <div><div class="k">유효기한</div><div class="v mono">2025-10-01T15:20:00+09:00</div></div>
-    <div><div class="k">파일</div><div class="v mono">pred_삼성물산_028260.csv</div></div>
-  </div>
-  <div class="conf">
-    <div class="conf-label">신뢰도</div>
-    <div class="bar big"><div class="fill bar-0" style="width:14%;"></div></div>
-    <div class="bar-text">0.145</div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-hd">
-    <div class="title">삼성전자 <span class="muted">(005930)</span></div>
-    <div class="pill">H1(1일)</div>
-  </div>
-  <div class="grid">
-    <div><div class="k">현재가</div><div class="v">85,400</div></div>
-    <div><div class="k">매수가</div><div class="v">85,069.95</div></div>
-    <div><div class="k">익절가</div><div class="v">87,776.36</div></div>
-    <div><div class="k">손절가</div><div class="v">84,079.79</div></div>
-    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.73</span></div></div>
-    <div><div class="k">수량</div><div class="v">1</div></div>
-    <div><div class="k">유효기한</div><div class="v mono">2025-09-29T15:20:00+09:00</div></div>
-    <div><div class="k">파일</div><div class="v mono">pred_삼성전자_005930.csv</div></div>
-  </div>
-  <div class="conf">
-    <div class="conf-label">신뢰도</div>
-    <div class="bar big"><div class="fill bar-0" style="width:18%;"></div></div>
-    <div class="bar-text">0.183</div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-hd">
-    <div class="title">신세계 <span class="muted">(004170)</span></div>
-    <div class="pill">H1(1일)</div>
-  </div>
-  <div class="grid">
-    <div><div class="k">현재가</div><div class="v">193,400</div></div>
-    <div><div class="k">매수가</div><div class="v">192,580.88</div></div>
-    <div><div class="k">익절가</div><div class="v">199,297.65</div></div>
-    <div><div class="k">손절가</div><div class="v">190,123.53</div></div>
-    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.73</span></div></div>
-    <div><div class="k">수량</div><div class="v">1</div></div>
-    <div><div class="k">유효기한</div><div class="v mono">2025-09-29T15:20:00+09:00</div></div>
-    <div><div class="k">파일</div><div class="v mono">pred_신세계_004170.csv</div></div>
-  </div>
-  <div class="conf">
-    <div class="conf-label">신뢰도</div>
-    <div class="bar big"><div class="fill bar-0" style="width:17%;"></div></div>
-    <div class="bar-text">0.179</div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-hd">
-    <div class="title">지역난방공사 <span class="muted">(071320)</span></div>
-    <div class="pill">H3(3일)</div>
-  </div>
-  <div class="grid">
-    <div><div class="k">현재가</div><div class="v">90,300</div></div>
-    <div><div class="k">매수가</div><div class="v">89,628.98</div></div>
-    <div><div class="k">익절가</div><div class="v">89,262.53</div></div>
-    <div><div class="k">손절가</div><div class="v">87,615.91</div></div>
-    <div><div class="k">RR</div><div class="v"><span class="tag tag-red">-0.18</span></div></div>
-    <div><div class="k">수량</div><div class="v">1</div></div>
-    <div><div class="k">유효기한</div><div class="v mono">2025-10-01T15:20:00+09:00</div></div>
-    <div><div class="k">파일</div><div class="v mono">pred_지역난방공사_071320.csv</div></div>
-  </div>
-  <div class="conf">
-    <div class="conf-label">신뢰도</div>
-    <div class="bar big"><div class="fill bar-0" style="width:9%;"></div></div>
-    <div class="bar-text">0.093</div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card-hd">
-    <div class="title">한미약품 <span class="muted">(128940)</span></div>
-    <div class="pill">H2(2일)</div>
-  </div>
-  <div class="grid">
-    <div><div class="k">현재가</div><div class="v">393,000.01</div></div>
-    <div><div class="k">매수가</div><div class="v">390,758.50</div></div>
-    <div><div class="k">익절가</div><div class="v">409,138.87</div></div>
-    <div><div class="k">손절가</div><div class="v">384,033.97</div></div>
-    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.73</span></div></div>
-    <div><div class="k">수량</div><div class="v">1</div></div>
-    <div><div class="k">유효기한</div><div class="v mono">2025-09-30T15:20:00+09:00</div></div>
-    <div><div class="k">파일</div><div class="v mono">pred_한미약품_128940.csv</div></div>
-  </div>
-  <div class="conf">
-    <div class="conf-label">신뢰도</div>
-    <div class="bar big"><div class="fill bar-20" style="width:35%;"></div></div>
-    <div class="bar-text">0.358</div>
+    <div class="bar big"><div class="fill bar-40" style="width:54%;"></div></div>
+    <div class="bar-text">0.547</div>
   </div>
 </div>
 
@@ -521,71 +365,93 @@ footer{color:var(--muted);font-size:12px;margin:12px 0}
   </div>
   <div class="grid">
     <div><div class="k">현재가</div><div class="v">55,000</div></div>
-    <div><div class="k">매수가</div><div class="v">54,648.24</div></div>
-    <div><div class="k">익절가</div><div class="v">57,532.64</div></div>
-    <div><div class="k">손절가</div><div class="v">53,592.97</div></div>
-    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.73</span></div></div>
+    <div><div class="k">매수가</div><div class="v">54,640</div></div>
+    <div><div class="k">익절가</div><div class="v">57,530</div></div>
+    <div><div class="k">손절가</div><div class="v">53,600</div></div>
+    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.78</span></div></div>
     <div><div class="k">수량</div><div class="v">1</div></div>
-    <div><div class="k">유효기한</div><div class="v mono">2025-09-30T15:20:00+09:00</div></div>
-    <div><div class="k">파일</div><div class="v mono">pred_호텔신라_008770.csv</div></div>
+    <div><div class="k">보유일</div><div class="v">2</div></div>
+    <div><div class="k">유효기간</div><div class="v mono">2025-10-13</div></div>
   </div>
   <div class="conf">
     <div class="conf-label">신뢰도</div>
-    <div class="bar big"><div class="fill bar-20" style="width:21%;"></div></div>
-    <div class="bar-text">0.213</div>
+    <div class="bar big"><div class="fill bar-40" style="width:52%;"></div></div>
+    <div class="bar-text">0.521</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-hd">
+    <div class="title">LG이노텍 <span class="muted">(011070)</span></div>
+    <div class="pill">H1(1일)</div>
+  </div>
+  <div class="grid">
+    <div><div class="k">현재가</div><div class="v">196,900</div></div>
+    <div><div class="k">매수가</div><div class="v">195,900</div></div>
+    <div><div class="k">익절가</div><div class="v">204,090</div></div>
+    <div><div class="k">손절가</div><div class="v">192,910</div></div>
+    <div><div class="k">RR</div><div class="v"><span class="tag tag-green">2.74</span></div></div>
+    <div><div class="k">수량</div><div class="v">1</div></div>
+    <div><div class="k">보유일</div><div class="v">1</div></div>
+    <div><div class="k">유효기간</div><div class="v mono">2025-10-13</div></div>
+  </div>
+  <div class="conf">
+    <div class="conf-label">신뢰도</div>
+    <div class="bar big"><div class="fill bar-40" style="width:51%;"></div></div>
+    <div class="bar-text">0.514</div>
   </div>
 </div>
 </div>
 
-  <footer>※ 본 리포트는 자동생성 결과이며 투자 결정의 최종 책임은 투자자 본인에게 있습니다.</footer>
+<footer>
+※ RR = (익절폭 ÷ 손실폭). 값이 클수록 위험 대비 기대수익이 큽니다.<br>
+※ 신뢰도(confidence)는 예측 품질을 0~1로 정규화한 지표로, 0.5 이상을 투자 가능 구간으로 표시합니다.<br>
+※ 본 리포트는 융일 LABs 자동생성 결과이며 투자 결정의 최종 책임은 투자자 본인에게 있습니다.
+</footer>
+
 </div>
 
 <script>
-// 단순 정렬
+// 정렬
 let sortDir = 1, lastCol = -1;
 function sortTable(col){
   const t = document.getElementById('t');
   const tbody = t.tBodies[0];
   const rows = Array.from(tbody.rows);
   sortDir = (lastCol===col)? -sortDir : 1; lastCol = col;
-
-  const numCols = [3,4,5,6,7,8,10,11]; // 숫자열
+  const numCols = [3,4,5,6,7,8,10,11];
   rows.sort((a,b)=>{
-    let av = a.cells[col].innerText.replace(/[,]/g,'');
-    let bv = b.cells[col].innerText.replace(/[,]/g,'');
+    let av = a.cells[col].innerText.replace(/[ ,]/g,'');
+    let bv = b.cells[col].innerText.replace(/[ ,]/g,'');
     if(numCols.includes(col)){ av=parseFloat(av)||-Infinity; bv=parseFloat(bv)||-Infinity; }
     return (av>bv?1:av<bv?-1:0)*sortDir;
   });
   rows.forEach(r=>tbody.appendChild(r));
 }
 
-// 검색/필터
+// 필터
 function showC(v){ document.getElementById('minc_val').innerText = v + '%'; }
-
 function filterTable(){
-  const q = document.getElementById('q').value.toLowerCase();
-  const hz = document.getElementById('hz').value.toLowerCase();
+  const q    = document.getElementById('q').value.toLowerCase();
+  const hz   = document.getElementById('hz').value.toLowerCase();
   const side = document.getElementById('side').value.toLowerCase();
   const minc = parseInt(document.getElementById('minc').value||'0',10);
-  const minrr = parseFloat(document.getElementById('minrr').value||'0');
-
+  const minrr= parseFloat(document.getElementById('minrr').value||'0');
   const t = document.getElementById('t');
   const rows = Array.from(t.tBodies[0].rows);
   rows.forEach(tr=>{
     const name = tr.cells[0].innerText.toLowerCase();
     const code = tr.cells[1].innerText.toLowerCase();
-    const hzc  = tr.cells[2].innerText.toLowerCase().slice(0,2); // h1/h2/h3
+    const hzc  = (tr.getAttribute('data-hz')||'').toLowerCase();
     const sidec= tr.cells[9].innerText.toLowerCase();
     const conf = parseFloat(tr.cells[10].innerText)||0;
     const rr   = parseFloat(tr.cells[7].innerText)||0;
-
     let ok = true;
     if(q && !(name.includes(q) || code.includes(q))) ok=false;
     if(hz && hzc!==hz) ok=false;
     if(side && sidec!==side) ok=false;
     if(conf*100 < minc) ok=false;
     if(rr < minrr) ok=false;
-
     tr.style.display = ok? '' : 'none';
   });
 }

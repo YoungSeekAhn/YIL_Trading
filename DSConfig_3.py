@@ -35,8 +35,11 @@ class DSConfig:
     model_dir: str = "./_train/_models"  # 모델 저장 디렉토리
     scaler_dir: str = "./_train/_scalers"  # 스케일러 저장 디렉토리
          
-    predict_dir: str = "./_predict_out"  # 출력 결과 저장 디렉토리
-    report_dir: str = "./_report_out"  # 분석 결과 저장 디렉토리
+    predict_result_dir: str = "./_predict_result"  # 출력 결과 저장 디렉토리
+    predict_report_dir: str = "./_predict_report"  # 예측 결과 저장 디렉토리
+    price_report_dir: str = "./_price_report"  # 분석 결과 저장 디렉토리
+    
+    env_dir: str = "./kis_trade"  # .env 파일 경로 (자동매매용)
 
 
     #test_getdata_dir: str = "./TR_LSTM3/_csvdata/삼성전자(005930)_20250909.csv"

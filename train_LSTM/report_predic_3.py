@@ -264,7 +264,7 @@ def report_predictions(model, test_loader, device, cfg):
     table.insert(2, "code", cfg.code)
 
     # --- 저장 ---
-    out_dir = Path(cfg.predict_dir) / f"{cfg.end_date}"; out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = Path(cfg.predict_result_dir) / f"{cfg.end_date}"; out_dir.mkdir(parents=True, exist_ok=True)
     out_csv = out_dir / f"pred_{cfg.name}_{cfg.code}.csv"
     ordered_cols = (
         ["date", "name", "code"]

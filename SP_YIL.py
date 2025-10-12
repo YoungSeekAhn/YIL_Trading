@@ -17,20 +17,21 @@ from makedata.dataset_functions import last_trading_day
 from makedata.get_dataset_2 import get_dataset
 from makedata.make_dataset_3 import make_datasets
 from train_LSTM.train_lstm_3 import training_LSTM
-from analysis.analysis_predic import evaluate_predict_result
-from analysis.report_predic import report_out
+from predict_result.predict_report import predict_report
+from predict_result.predict_result import predict_result
 from trading_report.report_trade_price import report_trade_price
+from makedata.report_sel_stock import report_sel_stock
 
 # =========================
 # 사용자 설정
 # =========================
-TOP_N = 5
+TOP_N = 20
 DURATION_DAYS = 365 * 2          # 데이터 기간
 SAVE_CSV_FILE = True             # get_dataset 수집 CSV 저장 여부
 FORCE_REBUILD_DATASET = False    # True면 기존 .pkl 있어도 새로 make_datasets
 PLOT_ROLLING = False             # (사용 중이면) 롤링 차트 그릴지 여부
 
-TEST_MODE = True               # True면 end_date를 20250924로 고정 (테스트용)
+TEST_MODE = False               # True면 end_date를 20250924로 고정 (테스트용)
 
 # =========================
 # 유틸
@@ -141,6 +142,7 @@ def main():
     if not os.path.exists(SEL_CSV_PATH):
         #raise FileNotFoundError(f"선정 CSV를 찾을 수 없습니다: {SEL_CSV_PATH}")
         sel_stock(config)  # 선정 CSV 생성 시도
+        report_sel_stock(config)  # 선정 리포트 생성 시도
 
     sel = pd.read_csv(SEL_CSV_PATH, dtype={"Code": str})
     # 안전한 정렬 (Score_1w 내림차순)
@@ -181,8 +183,14 @@ def main():
         for (n, c, _, msg) in arr:
             print(f"- {n} ({c}) {('→ ' + msg) if msg else ''}")
 
-    #evaluate_predict_result(config)
-    #report_out(config)
+    # LSTM 학습/예측 결과 평가 및 리포트
+    # predict_result(config) 함수 포함됨
+    print("\n=========== 예측 결과 평가 및 리포트 ===========")
+    predict_report(config)
+    
+    # 거래 가격 리포트
+    # make_trade_price() 함수 포함됨
+    print("\n=========== 거래 가격 리포트 ===========")
     report_trade_price(config)
     
 

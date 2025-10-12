@@ -278,7 +278,7 @@ tbody tr:hover {{ background: var(--row); }}
     print(f"[OK] HTML saved -> {out_html}")
 
     # 공유 폴더로 복사(홈페이지 전시용)
-    copy_path = Path(r"C:\Users\ganys\python_work\YIL_server\shared\reports")
+    copy_path = Path(r"C:\Users\ganys\python_work\YIL_server\shared\reports\1_select")
     try:
         copy_path.mkdir(parents=True, exist_ok=True)
         dst = copy_path / out_html.name

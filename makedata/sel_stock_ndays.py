@@ -29,6 +29,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from DSConfig_3 import DSConfig
 from makedata.dataset_functions import last_trading_day
+from makedata.report_sel_stock import report_sel_stock
 
 cfg = DSConfig  # 프로젝트 설정 객체/클래스에 맞춰 사용하세요
 
@@ -468,6 +469,8 @@ def sel_stock(cfg):
     filepath = os.path.join(get_dir, f"scored_{e_krx}.csv")
     out.to_csv(filepath, index=False, encoding="utf-8-sig")
     print(f"[저장] {filepath}")
+    
+    report_sel_stock(cfg)  # 리포트 생성 시도
 
 
 if __name__ == "__main__":

@@ -529,7 +529,7 @@ def make_trade_price(cfg,
                      tick_fn: TickSizeFn = default_tick_size,
                      holidays: Optional[List[str]] = None) -> pd.DataFrame:
 
-    base_dir = Path(cfg.predict_dir) / f"{cfg.end_date}"
+    base_dir = Path(cfg.predict_result_dir) / f"{cfg.end_date}"
     files = sorted(base_dir.glob("*.csv"))
     if not files:
         raise FileNotFoundError(f"No CSV found in: {base_dir}")
@@ -561,24 +561,14 @@ def make_trade_price(cfg,
     out = out[cols]
 
     # 저장 경로
-    report_dir = Path(getattr(cfg, 'report_dir', './reports')) / f"Report_{cfg.end_date}"
+    report_dir = Path(cfg.price_report_dir) / f"Report_{cfg.end_date}"
     report_dir.mkdir(parents=True, exist_ok=True)
-    filename = getattr(cfg, 'out', f"Trading_price_{cfg.end_date}.csv")
-    out_path = report_dir / filename
+    out_path = report_dir / f"Trading_price_{cfg.end_date}.csv"
 
-    try:
-        out.to_csv(out_path, index=False, encoding="utf-8-sig")
-    except PermissionError as e:
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        alt_path = report_dir / f"{Path(filename).stem}_{ts}.csv"
-        try:
-            out.to_csv(alt_path, index=False, encoding="utf-8-sig")
-            logging.warning(f"could not write {out_path!s} (permission denied). Saved to {alt_path!s} instead.")
-            out_path = alt_path
-        except Exception as e2:
-            raise PermissionError(f"Failed to save report to '{out_path}' and alternative '{alt_path}': {e2}") from e
-    else:
-        logging.info(f"saved -> {out_path}")
+    out.to_csv(out_path, index=False, encoding="utf-8-sig")
+
+    logging.info(f"saved -> {out_path}")
+    
     return out
 
 

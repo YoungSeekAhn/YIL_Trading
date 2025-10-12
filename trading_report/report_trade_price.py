@@ -19,6 +19,7 @@ import html
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
+import shutil
 from trading_report.make_trade_price import make_trade_price
 import sys
 # Ensure project root is on sys.path so imports like `from DSConfig_3 import cfg` work
@@ -453,11 +454,11 @@ def report_trade_price(cfg):
     
     with_cards = True
     
-    input_csv = Path(cfg.report_dir) / f"Report_{cfg.end_date}" / f"Trading_price_{cfg.end_date}.csv"
+    input_csv = Path(cfg.price_report_dir) / f"Report_{cfg.end_date}" / f"Trading_price_{cfg.end_date}.csv"
     df = pd.read_csv(input_csv, dtype={"종목코드": str})
   
     df = _normalize_columns(df)
-    src_base = Path(cfg.report_dir) / f"Report_{cfg.end_date}"
+    #src_base = Path(cfg.price_report_dir) / f"Report_{cfg.end_date}"
     # ✅ 신뢰도 내림차순 정렬
     if 'confidence' in df.columns:
         df = df.sort_values('confidence', ascending=False, kind='mergesort').reset_index(drop=True)
@@ -471,12 +472,25 @@ def report_trade_price(cfg):
 
     html = build_html(df, df_cards, with_cards, date_token=cfg.end_date)
 
-    out_html = Path(cfg.report_dir) / f"Report_{cfg.end_date}" / f"Trading_Report{cfg.end_date}.html"
+    out_html = Path(cfg.price_report_dir) / f"Report_{cfg.end_date}" / f"Trading_Report{cfg.end_date}.html"
     
     with open(out_html, "w", encoding="utf-8") as f:
         f.write(html)
     print(f"[OK] HTML saved -> {out_html}")
     
+    
+    # 공유 폴더로 복사(홈페이지 전시용)
+    copy_path = Path(r"C:\Users\ganys\python_work\YIL_server\shared\reports\3_price")
+    try:
+        copy_path.mkdir(parents=True, exist_ok=True)
+        dst = copy_path / out_html.name
+        shutil.copy(out_html, dst)
+        print(f"[OK] HTML copied to -> {dst}")
+    except Exception as e:
+        print(f"[WARN] failed to copy HTML to shared reports: {e}")
+
+    
+# ---- 메인 (직접 실행 시) ----
     
 if __name__ == "__main__":
   end_date = last_trading_day()

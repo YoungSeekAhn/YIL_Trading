@@ -194,5 +194,45 @@ def main():
     report_trade_price(config)
     
 
-if __name__ == "__main__":
+import schedule
+import time
+import argparse
+from datetime import datetime
+
+def run_job():
+    print(f"[RUN] main() 실행 ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})")
     main()
+
+if __name__ == "__main__":
+    # 명령줄 인자 파싱
+    ap = argparse.ArgumentParser(description="자동매매 스케줄러")
+    ap.add_argument("--start", default="22:00", help="시작 시간 (HH:MM 형식, 기본값 22:00)")
+    args = ap.parse_args()
+
+    # 입력 검증
+    try:
+        hour, minute = map(int, args.start.split(":"))
+        assert 0 <= hour < 24 and 0 <= minute < 60
+    except Exception:
+        print("❌ 시작 시간 형식 오류. 예시: --start 21:30")
+        exit(1)
+
+    print(f"🕒 스케줄러 시작: 매일 {args.start}에 main() 실행")
+
+    # 스케줄 등록
+    schedule.every().day.at(args.start).do(run_job)
+
+    # 무한 루프 (1분 단위로 확인)
+    while True:
+        schedule.run_pending()
+        time.sleep(60)
+
+# py -m PyInstaller --onefile SP_YIL.py
+
+# python -m PyInstaller ^
+#  --noconfirm ^
+#  --clean ^
+#  --noconsole ^
+#  --icon=icon.ico ^
+#  --add-data "config/.env;config/" ^
+#  src/auto_trader.py

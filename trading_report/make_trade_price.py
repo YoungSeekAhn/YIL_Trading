@@ -520,8 +520,13 @@ def process_one_file(csv_path: Path,
         results.append(res)
     return results
 
+    
+def _norm_code(s: pd.Series) -> pd.Series:
+    s = s.astype(str).str.strip()
+    s = s.str.replace(r"\.0+$", "", regex=True)
+    s = s.str.replace("-", "", regex=False)
+    return s.apply(lambda x: x.zfill(6) if x.isdigit() else x)
 
-# ====== 배치 러너 ======
 def make_trade_price(cfg,
                      equity: Optional[float]=None,
                      risk_pct: Optional[float]=None,
@@ -536,7 +541,9 @@ def make_trade_price(cfg,
 
     all_rows: List[dict] = []
     for fp in files:
-        rows = process_one_file(fp, equity=equity, risk_pct=risk_pct, allow_short=allow_short, tick_fn=tick_fn, holidays=holidays)
+        rows = process_one_file(fp, equity=equity, risk_pct=risk_pct,
+                                allow_short=allow_short, tick_fn=tick_fn,
+                                holidays=holidays)
         if rows:
             all_rows.extend(rows)
 
@@ -545,30 +552,97 @@ def make_trade_price(cfg,
 
     out = pd.DataFrame(all_rows)
 
-    # 보기 좋은 컬럼 순서
+    # -------------------------------
+    # Score_1w 병합 (scored_{end}.csv)
+    # -------------------------------
+    score_path = Path(cfg.selout_dir) / f"scored_{cfg.end_date}.csv"
+    score_df = None
+    if score_path.exists():
+        # Code 앞자리 0 보존
+        score_df = pd.read_csv(score_path, dtype=str)
+        # 컬럼 표준화
+        score_df = score_df.rename(columns={"Name": "종목명", "Code": "종목코드"})
+        # 코드 표준화
+        if "종목코드" in score_df.columns:
+            score_df["종목코드"] = _norm_code(score_df["종목코드"])
+        # 점수 숫자화
+        if "Score_1w" in score_df.columns:
+            score_df["Score_1w"] = pd.to_numeric(score_df["Score_1w"], errors="coerce")
+        else:
+            logging.warning("Score file has no 'Score_1w'.")
+            score_df["Score_1w"] = np.nan
+    else:
+        logging.warning(f"Score file not found: {score_path}")
+
+    # out 코드 표준화
+    if "종목코드" in out.columns:
+        out["종목코드"] = _norm_code(out["종목코드"])
+
+    if score_df is not None and not score_df.empty:
+        merged = out.copy()
+        merged_done = False
+
+        if "종목코드" in out.columns and "종목코드" in score_df.columns:
+            tmp = score_df[["종목코드", "Score_1w"]].drop_duplicates("종목코드")
+            merged = merged.merge(tmp, on="종목코드", how="left")
+            merged_done = True
+        if not merged_done and ("종목명" in out.columns and "종목명" in score_df.columns):
+            tmp = score_df[["종목명", "Score_1w"]].drop_duplicates("종목명")
+            merged = merged.merge(tmp, on="종목명", how="left")
+            merged_done = True
+
+        if not merged_done:
+            logging.warning("Cannot merge Score_1w: no common keys ('종목코드' or '종목명').")
+        else:
+            out = merged
+
+    # -------------------------------
+    # 컬럼 순서 (질문 예시 구조에 맞춤)
+    # -------------------------------
     order = [
         "source_file","종목명","종목코드","권장호라이즌","last_close",
-        "매수가(entry)","익절가(tp)","손절가(sl)","RR",
+        "매수가(entry)","익절가(tp)","손절가(sl)","RR","Score_1w",
         "ord_qty","side","confidence","holding_days","valid_until",
         "ATR","buf_close","buf_high","buf_low",
         "요약점수(h1)","요약점수(h2)","요약점수(h3)",
-        "h1_close_MAPE(%)","h2_close_MAPE(%)","h3_close_MAPE(%)",
-        "h1_close_DirAcc(%)","h2_close_DirAcc(%)","h3_close_DirAcc(%)",
         "ex_base_h1","ex_pen_h1","ex_base_h2","ex_pen_h2","ex_base_h3","ex_pen_h3",
-        "flags_h1","flags_h2","flags_h3","warn_bad_RR"
+        "flags_h1","flags_h2","flags_h3","warn_bad_RR",
+        # 뒤쪽 지표명: h1/h2/h3 MAPE/DirAcc/Bias/MAE/count
+        "h1_MAPE(%)","h1_DirAcc(%)","h1_Bias","h1_MAE","h1_count",
+        "h3_MAPE(%)","h3_DirAcc(%)","h3_Bias","h3_MAE","h3_count",
+        "h2_MAPE(%)","h2_DirAcc(%)","h2_Bias","h2_MAE","h2_count",
     ]
     cols = [c for c in order if c in out.columns] + [c for c in out.columns if c not in order]
     out = out[cols]
 
-    # 저장 경로
+    # -------------------------------
+    # 정렬: ① Score_1w ↓ → ② RR ↓ → ③ (conf>=0.4 먼저) → confidence ↓
+    # -------------------------------
+    if "Score_1w" not in out.columns:
+        out["Score_1w"] = np.nan
+    out["RR"] = pd.to_numeric(out.get("RR", np.nan), errors="coerce")
+    out["confidence"] = pd.to_numeric(out.get("confidence", np.nan), errors="coerce")
+
+    out["_conf_bucket"] = (out["confidence"].fillna(-np.inf) >= 0.4).astype(int)
+    out["_confidence_num"] = out["confidence"]
+
+    out.sort_values(
+        by=["Score_1w", "RR", "_conf_bucket", "_confidence_num"],
+        ascending=[False, False, False, False],
+        na_position="last",
+        inplace=True
+    )
+    out.drop(columns=["_conf_bucket","_confidence_num"], inplace=True)
+
+    # -------------------------------
+    # 저장
+    # -------------------------------
     report_dir = Path(cfg.price_report_dir) / f"Report_{cfg.end_date}"
     report_dir.mkdir(parents=True, exist_ok=True)
     out_path = report_dir / f"Trading_price_{cfg.end_date}.csv"
-
     out.to_csv(out_path, index=False, encoding="utf-8-sig")
-
     logging.info(f"saved -> {out_path}")
-    
+
     return out
 
 

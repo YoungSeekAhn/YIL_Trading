@@ -5,31 +5,34 @@ make_web_report_v4.py
 - 신뢰도(confidence) 내림차순 정렬로 전시
 - 신뢰도 0.5 이상 = 투자가능(행 강조 색상), 카드 영역도 0.5 이상만 표시
 - 유효기간(valid_until)은 'YYYY-MM-DD'까지만 표시
+- Score_1w: Trading_price에 없으면 scored_{end_date}.csv에서 병합 (종목코드→종목명 순)
 - 파일 컬럼은 '원래 위치'로 하이퍼링크 (상대경로: <src_base>/<date>/<source_file>)
 - 순수 HTML/CSS/JS (외부 의존 X)
 
 사용 예:
-    python make_web_report_v4.py \
-      --csv ./reports/Report_20251010/Trading_price_20251010.csv \
-      --out ./reports/Report_20251010/Trading_Report_20251010.html \
-      --with-cards --src-base ../predict
+    python make_web_report_v4.py  # DSConfig_3.config의 end_date 자동 계산 후 생성
 """
-import argparse
 import html
+import logging
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
 import shutil
-from trading_report.make_trade_price import make_trade_price
 import sys
-# Ensure project root is on sys.path so imports like `from DSConfig_3 import cfg` work
-# when this module is executed from inside the `trading_report` folder or other CWDs.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from DSConfig_3 import config
-from makedata.dataset_functions import last_trading_day
 
-# ---- 유틸 ----
+# 프로젝트 루트 경로를 sys.path에 추가 (trading_report/ 내부에서 실행해도 import 가능)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+# 외부 프로젝트 구성요소
+from DSConfig_3 import config                    # 프로젝트 설정 객체
+from makedata.dataset_functions import last_trading_day
+from trading_report.make_trade_price import make_trade_price  # Trading_price_<date>.csv 생성 함수
+
+# -------------------------
+# 유틸
+# -------------------------
 def _fmt(x, nd=2):
+    """숫자 포맷(소수 nd자리, 천단위 콤마). NaN/None은 빈문자."""
     try:
         if pd.isna(x):
             return ""
@@ -38,9 +41,9 @@ def _fmt(x, nd=2):
         return f"{float(x):,.{nd}f}"
     except Exception:
         return str(x)
-      
-# 현재가 전용: 항상 정수로 표기
+
 def _fmt0(x):
+    """현재가 전용: 정수 표기."""
     try:
         if pd.isna(x):
             return ""
@@ -50,7 +53,6 @@ def _fmt0(x):
 
 def _safe(s):
     return html.escape("" if s is None else str(s))
-
 
 def _class_by_rr(rr):
     try:
@@ -66,7 +68,6 @@ def _class_by_rr(rr):
         return "tag-red"
     except Exception:
         return "tag-gray"
-
 
 def _class_by_conf(c):
     try:
@@ -85,15 +86,12 @@ def _class_by_conf(c):
     except Exception:
         return "bar-0"
 
-
 def _class_by_side(s):
     s = (s or "").upper()
     return "side-buy" if s == "BUY" else ("side-sell" if s == "SELL" else "side-unknown")
 
-
 def _hlabel(h):
     return {"h1": "H1(1일)", "h2": "H2(2일)", "h3": "H3(3일)"}.get(str(h).lower(), str(h))
-
 
 def _date_only(s: str) -> str:
     try:
@@ -103,15 +101,22 @@ def _date_only(s: str) -> str:
     except Exception:
         return str(s)[:10]
 
-
 def _is_investable(c) -> bool:
     try:
         return float(c) >= 0.5
     except Exception:
         return False
 
+def _norm_code(s: pd.Series) -> pd.Series:
+    """종목코드 표준화: 문자열화, .0 제거, 하이픈 제거, 숫자형이면 6자리 zero-fill."""
+    s = s.astype(str).str.strip()
+    s = s.str.replace(r"\.0+$", "", regex=True)
+    s = s.str.replace("-", "", regex=False)
+    return s.apply(lambda x: x.zfill(6) if x.isdigit() else x)
 
-# ---- 컬럼 정규화 ----
+# -------------------------
+# 컬럼 정규화/Score 병합
+# -------------------------
 COL_ALIASES = {
     "h1_MAPE(%)": ["h1_MAPE(%)", "h1_close_MAPE(%)"],
     "h2_MAPE(%)": ["h2_MAPE(%)", "h2_close_MAPE(%)"],
@@ -121,8 +126,49 @@ COL_ALIASES = {
     "h3_DirAcc(%)": ["h3_DirAcc(%)", "h3_close_DirAcc(%)"],
 }
 
+def _attach_score_1w(df: pd.DataFrame, cfg) -> pd.DataFrame:
+    """
+    df에 Score_1w가 없으면 scored_{end}.csv에서 붙임.
+    우선키: 종목코드 -> 예비키: 종목명
+    """
+    if "Score_1w" in df.columns:
+        return df
+
+    score_path = Path(cfg.selout_dir) / f"scored_{cfg.end_date}.csv"
+    if not score_path.exists():
+        print(f"[WARN] score file not found: {score_path}")
+        df["Score_1w"] = pd.NA
+        return df
+
+    sc = pd.read_csv(score_path, dtype=str).rename(columns={"Name": "종목명", "Code": "종목코드"})
+    if "종목코드" in sc.columns:
+        sc["종목코드"] = _norm_code(sc["종목코드"])
+    if "종목코드" in df.columns:
+        df["종목코드"] = _norm_code(df["종목코드"])
+
+    if "Score_1w" in sc.columns:
+        sc["Score_1w"] = pd.to_numeric(sc["Score_1w"], errors="coerce")
+    else:
+        sc["Score_1w"] = pd.NA
+
+    merged = df.copy()
+    done = False
+    if "종목코드" in merged.columns and "종목코드" in sc.columns:
+        merged = merged.merge(sc[["종목코드", "Score_1w"]].drop_duplicates("종목코드"),
+                              on="종목코드", how="left")
+        done = True
+    if not done and ("종목명" in merged.columns and "종목명" in sc.columns):
+        merged = merged.merge(sc[["종목명", "Score_1w"]].drop_duplicates("종목명"),
+                              on="종목명", how="left")
+        done = True
+    if not done:
+        print("[WARN] cannot attach Score_1w (no common key).")
+        merged["Score_1w"] = pd.NA
+
+    return merged
 
 def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """테이블/카드 전시에 필요한 기본 컬럼 보장 + 대체명 매핑."""
     df = df.copy()
     if "종목코드" in df.columns:
         df["종목코드"] = df["종목코드"].astype(str).str.zfill(6)
@@ -133,16 +179,19 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
                     df[out_col] = df[c]
                     break
     need = [
-        "종목명","종목코드","권장호라이즌","last_close","매수가(entry)","익절가(tp)","손절가(sl)",
-        "RR","ord_qty","side","confidence","holding_days","valid_until","source_file",
+        "종목명","종목코드","권장호라이즌","last_close",
+        "매수가(entry)","익절가(tp)","손절가(sl)","RR",
+        "Score_1w",
+        "ord_qty","side","confidence","holding_days","valid_until","source_file",
     ]
     for c in need:
         if c not in df.columns:
             df[c] = ""
     return df
 
-
-# ---- HTML 생성 ----
+# -------------------------
+# HTML 생성
+# -------------------------
 def build_html(df: pd.DataFrame, df_cards: pd.DataFrame, with_cards: bool, date_token: str) -> str:
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     n = len(df)
@@ -155,108 +204,71 @@ def build_html(df: pd.DataFrame, df_cards: pd.DataFrame, with_cards: bool, date_
     # 테이블 행
     rows_html = []
     for _, r in df.iterrows():
-        rr_cls = _class_by_rr(r.get("RR"))
+        rr_cls   = _class_by_rr(r.get("RR"))
         conf_cls = _class_by_conf(r.get("confidence"))
         side_cls = _class_by_side(r.get("side"))
-        hz_raw = str(r.get("권장호라이즌", "")).lower()
-        hz = _hlabel(hz_raw)
-        row_cls = "row-invest" if _is_investable(r.get("confidence")) else "row-non"
-        # 파일 링크
+        hz_raw   = str(r.get("권장호라이즌", "")).lower()
+        hz       = _hlabel(hz_raw)
+        row_cls  = "row-invest" if _is_investable(r.get("confidence")) else "row-non"
 
-        rows_html.append("""
-<tr class="{row_cls}" data-hz="{hz_raw}">
-  <td>{name}</td>
-  <td>{code}</td>
-  <td><span class="hz">{hz}</span></td>
-  <td class="num">{last_close}</td>
-  <td class="num">{entry}</td>
-  <td class="num">{tp}</td>
-  <td class="num">{sl}</td>
-  <td class="num"><span class="tag {rr_cls}">{rr}</span></td>
-  <td class="num">{qty}</td>
-  <td><span class="side {side_cls}">{side}</span></td>
+        rows_html.append(f"""
+<tr class="{row_cls}" data-hz="{_safe(hz_raw)}">
+  <td>{_safe(r.get("종목명"))}</td>
+  <td>{_safe(r.get("종목코드"))}</td>
+  <td><span class="hz">{_safe(hz)}</span></td>
+  <td class="num">{_fmt0(r.get("last_close"))}</td>
+  <td class="num">{_fmt(r.get("매수가(entry)"))}</td>
+  <td class="num">{_fmt(r.get("익절가(tp)"))}</td>
+  <td class="num">{_fmt(r.get("손절가(sl)"))}</td>
+  <td class="num"><span class="tag {rr_cls}">{_fmt(r.get("RR"),2)}</span></td>
+  <td class="num">{_fmt(r.get("Score_1w"),2)}</td>
+  <td class="num">{(int(r.get("ord_qty")) if (not pd.isna(r.get("ord_qty")) and str(r.get('ord_qty')).strip()!='') else "")}</td>
+  <td><span class="side {side_cls}">{_safe(r.get("side"))}</span></td>
   <td>
-    <div class="bar"><div class="fill {conf_cls}" style="width:{conf_pct}%;"></div></div>
-    <div class="bar-text">{conf_val}</div>
+    <div class="bar"><div class="fill {conf_cls}" style="width:{int(100*float(r.get('confidence') or 0))}%;"></div></div>
+    <div class="bar-text">{_fmt(r.get("confidence"),3)}</div>
   </td>
-  <td class="num">{hdays}</td>
-  <td class="mono">{vu}</td>
-  
+  <td class="num">{(int(r.get("holding_days")) if (not pd.isna(r.get("holding_days")) and str(r.get('holding_days')).strip()!='') else "")}</td>
+  <td class="mono">{_date_only(r.get("valid_until"))}</td>
 </tr>
-""".format(
-            row_cls=row_cls,
-            hz_raw=_safe(hz_raw),
-            name=_safe(r.get("종목명")),
-            code=_safe(r.get("종목코드")),
-            hz=_safe(hz),
-            last_close=_fmt0(r.get("last_close")),
-            entry=_fmt(r.get("매수가(entry)")),
-            tp=_fmt(r.get("익절가(tp)")),
-            sl=_fmt(r.get("손절가(sl)")),
-            rr_cls=rr_cls,
-            rr=_fmt(r.get("RR"),2),
-            qty=(int(r.get("ord_qty")) if (not pd.isna(r.get("ord_qty")) and str(r.get('ord_qty')).strip()!='') else ""),
-            side_cls=side_cls,
-            side=_safe(r.get("side")),
-            conf_cls=conf_cls,
-            conf_pct=int(100*float(r.get('confidence') or 0)),
-            conf_val=_fmt(r.get("confidence"),3),
-            hdays=(int(r.get("holding_days")) if (not pd.isna(r.get("holding_days")) and str(r.get('holding_days')).strip()!='') else ""),
-            vu=_date_only(r.get("valid_until")),
-            
-        ))
+""")
 
-    # 카드 섹션: 신뢰도 0.5 이상만 표시, 파일 비표시, 유효기간 날짜만
+    # 카드 섹션: 신뢰도 0.5 이상만 표시
     cards_html = []
     if with_cards:
         for _, r in df_cards.iterrows():
-            rr_cls = _class_by_rr(r.get("RR"))
+            rr_cls   = _class_by_rr(r.get("RR"))
             conf_cls = _class_by_conf(r.get("confidence"))
-            hz = _hlabel(r.get("권장호라이즌", ""))
-            cards_html.append("""
+            hz       = _hlabel(r.get("권장호라이즌", ""))
+            cards_html.append(f"""
 <div class="card">
   <div class="card-hd">
-    <div class="title">{name} <span class="muted">({code})</span></div>
-    <div class="pill">{hz}</div>
+    <div class="title">{_safe(r.get("종목명"))} <span class="muted">({_safe(r.get("종목코드"))})</span></div>
+    <div class="pill">{_safe(hz)}</div>
   </div>
   <div class="grid">
-    <div><div class="k">현재가</div><div class="v">{last_close}</div></div>
-    <div><div class="k">매수가</div><div class="v">{entry}</div></div>
-    <div><div class="k">익절가</div><div class="v">{tp}</div></div>
-    <div><div class="k">손절가</div><div class="v">{sl}</div></div>
-    <div><div class="k">RR</div><div class="v"><span class="tag {rr_cls}">{rr}</span></div></div>
-    <div><div class="k">수량</div><div class="v">{qty}</div></div>
-    <div><div class="k">보유일</div><div class="v">{hdays}</div></div>
-    <div><div class="k">유효기간</div><div class="v mono">{vu}</div></div>
+    <div><div class="k">현재가</div><div class="v">{_fmt0(r.get("last_close"))}</div></div>
+    <div><div class="k">매수가</div><div class="v">{_fmt(r.get("매수가(entry)"))}</div></div>
+    <div><div class="k">익절가</div><div class="v">{_fmt(r.get("익절가(tp)"))}</div></div>
+    <div><div class="k">손절가</div><div class="v">{_fmt(r.get("손절가(sl)"))}</div></div>
+    <div><div class="k">RR</div><div class="v"><span class="tag {rr_cls}">{_fmt(r.get("RR"),2)}</span></div></div>
+    <div><div class="k">Score_1w</div><div class="v">{_fmt(r.get("Score_1w"),2)}</div></div>
+    <div><div class="k">수량</div><div class="v">{(int(r.get("ord_qty")) if (not pd.isna(r.get("ord_qty")) and str(r.get('ord_qty')).strip()!='') else "")}</div></div>
+    <div><div class="k">보유일</div><div class="v">{(int(r.get("holding_days")) if (not pd.isna(r.get("holding_days")) and str(r.get('holding_days')).strip()!='') else "")}</div></div>
+    <div><div class="k">유효기간</div><div class="v mono">{_date_only(r.get("valid_until"))}</div></div>
   </div>
   <div class="conf">
     <div class="conf-label">신뢰도</div>
-    <div class="bar big"><div class="fill {conf_cls}" style="width:{conf_pct}%;"></div></div>
-    <div class="bar-text">{conf_val}</div>
+    <div class="bar big"><div class="fill {conf_cls}" style="width:{int(100*float(r.get('confidence') or 0))}%;"></div></div>
+    <div class="bar-text">{_fmt(r.get("confidence"),3)}</div>
   </div>
 </div>
-""".format(
-                name=_safe(r.get("종목명")),
-                code=_safe(r.get("종목코드")),
-                hz=_safe(hz),
-                last_close=_fmt0(r.get("last_close")),
-                entry=_fmt(r.get("매수가(entry)")),
-                tp=_fmt(r.get("익절가(tp)")),
-                sl=_fmt(r.get("손절가(sl)")),
-                rr_cls=rr_cls,
-                rr=_fmt(r.get("RR"),2),
-                qty=(int(r.get("ord_qty")) if (not pd.isna(r.get("ord_qty")) and str(r.get('ord_qty')).strip()!='') else ""),
-                hdays=(int(r.get("holding_days")) if (not pd.isna(r.get("holding_days")) and str(r.get('holding_days')).strip()!='') else ""),
-                vu=_date_only(r.get("valid_until")),
-                conf_cls=conf_cls,
-                conf_pct=int(100*float(r.get('confidence') or 0)),
-                conf_val=_fmt(r.get("confidence"),3),
-            ))
+""")
 
     # 호라이즌 분포 뱃지
     hz_badges = " ".join([f'<span class="badge">{_hlabel(k)} <b>{v}</b></span>' for k, v in hz_counts.items()])
 
-    # HTML 템플릿
+    # HTML 템플릿 (Score_1w 열 추가됨)
     tpl = """<!doctype html>
 <html lang=\"ko\">
 <head>
@@ -276,7 +288,7 @@ h1{font-size:22px;margin:8px 0 4px} .muted{color:var(--muted)}
 .controls{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0}
 input[type=\"search\"],select{padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:#0b1220;color:var(--txt)}
 .tablewrap{overflow:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
-table{border-collapse:collapse;width:100%;font-size:13px;min-width:960px}
+table{border-collapse:collapse;width:100%;font-size:13px;min-width:1040px}
 th,td{border-bottom:1px solid var(--line);padding:10px 8px;text-align:left;white-space:nowrap}
 th{background:#0d1420;position:sticky;top:0;z-index:1;cursor:pointer}
 td.num{text-align:right} .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--mono)}
@@ -358,12 +370,12 @@ footer{color:var(--muted);font-size:12px;margin:12px 0}
           <th onclick=\"sortTable(5)\">익절가</th>
           <th onclick=\"sortTable(6)\">손절가</th>
           <th onclick=\"sortTable(7)\">RR</th>
-          <th onclick=\"sortTable(8)\">수량</th>
-          <th onclick=\"sortTable(9)\">포지션</th>
-          <th onclick=\"sortTable(10)\">신뢰도</th>
-          <th onclick=\"sortTable(11)\">보유일</th>
-          <th onclick=\"sortTable(12)\">유효기간</th>
-          
+          <th onclick=\"sortTable(8)\">Score_1w</th>
+          <th onclick=\"sortTable(9)\">수량</th>
+          <th onclick=\"sortTable(10)\">포지션</th>
+          <th onclick=\"sortTable(11)\">신뢰도</th>
+          <th onclick=\"sortTable(12)\">보유일</th>
+          <th onclick=\"sortTable(13)\">유효기간</th>
         </tr>
       </thead>
       <tbody>
@@ -377,6 +389,7 @@ footer{color:var(--muted);font-size:12px;margin:12px 0}
 <footer>
 ※ RR = (익절폭 ÷ 손실폭). 값이 클수록 위험 대비 기대수익이 큽니다.<br>
 ※ 신뢰도(confidence)는 예측 품질을 0~1로 정규화한 지표로, 0.5 이상을 투자 가능 구간으로 표시합니다.<br>
+※ Score_1w는 최근 1주 종합 스코어(테크니컬/수급 등)로, 클수록 매수 관심도가 높음을 의미합니다.<br>
 ※ 본 리포트는 융일 LABs 자동생성 결과이며 투자 결정의 최종 책임은 투자자 본인에게 있습니다.
 </footer>
 
@@ -390,7 +403,8 @@ function sortTable(col){
   const tbody = t.tBodies[0];
   const rows = Array.from(tbody.rows);
   sortDir = (lastCol===col)? -sortDir : 1; lastCol = col;
-  const numCols = [3,4,5,6,7,8,10,11];
+  // 숫자열 인덱스: 3(현재가),4,5,6,7(RR),8(Score),9(수량),11(신뢰도),12(보유일)
+  const numCols = [3,4,5,6,7,8,9,11,12];
   rows.sort((a,b)=>{
     let av = a.cells[col].innerText.replace(/[ ,]/g,'');
     let bv = b.cells[col].innerText.replace(/[ ,]/g,'');
@@ -414,9 +428,9 @@ function filterTable(){
     const name = tr.cells[0].innerText.toLowerCase();
     const code = tr.cells[1].innerText.toLowerCase();
     const hzc  = (tr.getAttribute('data-hz')||'').toLowerCase();
-    const sidec= tr.cells[9].innerText.toLowerCase();
-    const conf = parseFloat(tr.cells[10].innerText)||0;
-    const rr   = parseFloat(tr.cells[7].innerText)||0;
+    const sidec= tr.cells[10].innerText.toLowerCase();  // 포지션
+    const conf = parseFloat(tr.cells[11].innerText)||0;  // 신뢰도
+    const rr   = parseFloat(tr.cells[7].innerText)||0;   // RR
     let ok = true;
     if(q && !(name.includes(q) || code.includes(q))) ok=false;
     if(hz && hzc!==hz) ok=false;
@@ -445,54 +459,71 @@ function filterTable(){
     )
     return html_txt
 
-
-# ---- 메인 ----
+# -------------------------
+# 리포트 메인
+# -------------------------
 def report_trade_price(cfg):
-  
-    
     make_trade_price(cfg)
-    
-    with_cards = True
-    
+
     input_csv = Path(cfg.price_report_dir) / f"Report_{cfg.end_date}" / f"Trading_price_{cfg.end_date}.csv"
     df = pd.read_csv(input_csv, dtype={"종목코드": str})
-  
+
+    # Score_1w 병합 (없으면 붙임)
+    df = _attach_score_1w(df, cfg)
+
+    # 전시용 컬럼 정규화
     df = _normalize_columns(df)
-    #src_base = Path(cfg.price_report_dir) / f"Report_{cfg.end_date}"
-    # ✅ 신뢰도 내림차순 정렬
-    if 'confidence' in df.columns:
-        df = df.sort_values('confidence', ascending=False, kind='mergesort').reset_index(drop=True)
 
-    
-    # 카드용 데이터프레임 (신뢰도 0.5 이상)
-    if 'confidence' in df.columns:
-        df_cards = df[pd.to_numeric(df['confidence'], errors='coerce') >= 0.5].copy()
-    else:
-        df_cards = df.copy()
+    # ---------------------------
+    # 카드용 데이터: 필터 + 정렬
+    # 조건: Score_1w ≥ 140, RR ≥ 2.5, confidence ≥ 0.45
+    # 정렬: Score_1w ↓, RR ↓, confidence ↓
+    # ---------------------------
+    # 안전한 숫자화
+    df["Score_1w_num"] = pd.to_numeric(df.get("Score_1w"), errors="coerce")
+    df["RR_num"]       = pd.to_numeric(df.get("RR"), errors="coerce")
+    df["conf_num"]     = pd.to_numeric(df.get("confidence"), errors="coerce")
 
-    html = build_html(df, df_cards, with_cards, date_token=cfg.end_date)
+    cond = (
+        (df["Score_1w_num"] >= 140) &
+        (df["RR_num"]       >= 2.5) &
+        (df["conf_num"]     >= 0.45)
+    )
+    df_cards = df.loc[cond].copy()
+
+    df_cards.sort_values(
+        by=["Score_1w_num", "RR_num", "conf_num"],
+        ascending=[False, False, False],
+        inplace=True
+    )
+    # 카드 렌더링은 원래 컬럼명 사용하므로 보조 컬럼은 유지/삭제 아무거나 OK
+    # 필요하면 아래 주석 해제
+    # df_cards.drop(columns=["Score_1w_num","RR_num","conf_num"], inplace=True)
+
+    # HTML 생성 (테이블은 전체 df, 카드는 필터된 df_cards)
+    html_text = build_html(df, df_cards, with_cards=True, date_token=cfg.end_date)
 
     out_html = Path(cfg.price_report_dir) / f"Report_{cfg.end_date}" / f"Trading_Report{cfg.end_date}.html"
-    
+    out_html.parent.mkdir(parents=True, exist_ok=True)
     with open(out_html, "w", encoding="utf-8") as f:
-        f.write(html)
+        f.write(html_text)
     print(f"[OK] HTML saved -> {out_html}")
-    
-    
-    # 공유 폴더로 복사(홈페이지 전시용)
+
+    # 공유 폴더 복사
     copy_path = Path(r"C:\Users\ganys\python_work\YIL_server\shared\reports\3_price")
     try:
         copy_path.mkdir(parents=True, exist_ok=True)
-        dst = copy_path / out_html.name
-        shutil.copy(out_html, dst)
-        print(f"[OK] HTML copied to -> {dst}")
+        shutil.copy(out_html, copy_path / out_html.name)
+        print(f"[OK] HTML copied to -> {copy_path / out_html.name}")
     except Exception as e:
         print(f"[WARN] failed to copy HTML to shared reports: {e}")
 
-    
-# ---- 메인 (직접 실행 시) ----
-    
+# -------------------------
+# 실행 스크립트
+# -------------------------
 if __name__ == "__main__":
-  end_date = last_trading_day()
-  config.end_date = end_date
-  report_trade_price(config)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    # 마지막 거래일을 end_date로 세팅하여 생성
+    end_date = last_trading_day()
+    config.end_date = end_date
+    report_trade_price(config)

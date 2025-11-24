@@ -484,7 +484,9 @@ def main():
 
     # 5) CSV 로드/필터/정렬
     config.end_date = last_trading_day()
-    input_csv = Path(config.report_dir) / f"Report_{config.end_date}" / f"Trading_price_{config.end_date}.csv"
+    config.end_date = "20251013"  # 테스트용 하드코딩
+    
+    input_csv = Path(config.price_report_dir) / f"Report_{config.end_date}" / f"Trading_price_{config.end_date}.csv"
     df = pd.read_csv(input_csv, dtype={"종목코드": str})
     if "confidence" not in df.columns:
         raise RuntimeError("CSV에 'confidence' 컬럼이 없습니다.")

@@ -654,7 +654,7 @@ def build_argparser():
     p.add_argument('--report-dir', default='./reports')
     p.add_argument('--out', default=None, help='출력 파일명(기본 Trading_price_<end_date>.csv)')
     p.add_argument('--equity', type=float, default=None, help='계좌 총자산(원). 리스크 기반 수량 산정에 사용')
-    p.add_argument('--risk-pct', type=float, default=0.5, help='트레이드당 허용 위험 비율(예: 0.005=0.5%)')
+    p.add_argument('--risk-pct', type=float, default=None, help='트레이드당 허용 위험 비율(예: 0.005=0.5%)')
     p.add_argument('--allow-short', action='store_true', help='하락 예측 시 SELL 허용')
     p.add_argument('--holidays', default=None, help='휴일 목록 CSV 경로(YYYY-MM-DD 한 열)')
     return p
@@ -679,9 +679,6 @@ if __name__ == '__main__':
     cfg.end_date    = args.end_date
     cfg.report_dir  = args.report_dir
     cfg.out         = args.out or f"Trading_price_{cfg.end_date}.csv"
-    # cfg.equity      = args.equity
-    # cfg.risk_pct    = args.risk_pct
-    
 
     holidays = _load_holidays(args.holidays)
 

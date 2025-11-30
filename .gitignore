@@ -1,0 +1,9 @@
+dist/
+build/
+_train/
+kis_trade/
+__pycache__/
+_getdata/
+_predict_report/
+_predict_result/
+build/ 

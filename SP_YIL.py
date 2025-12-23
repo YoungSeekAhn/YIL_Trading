@@ -219,7 +219,7 @@ if __name__ == "__main__":
 
     print(f"🕒 스케줄러 시작: 매일 {args.start}에 main() 실행")
 
-    #run_job()  # 스크립트 시작 시 즉시 실행
+    run_job()  # 스크립트 시작 시 즉시 실행
     
     # 스케줄 등록
     schedule.every().day.at(args.start).do(run_job)
@@ -238,3 +238,4 @@ if __name__ == "__main__":
 #  --icon=icon.ico ^
 #  --add-data "config/.env;config/" ^
 #  src/auto_trader.py
+

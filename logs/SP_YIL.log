@@ -1,0 +1,33 @@
+Traceback (most recent call last):
+  File "C:\Users\ganys\python_work\YIL_trading\SP_YIL.py", line 7, in <module>
+    import pandas as pd
+ModuleNotFoundError: No module named 'pandas'
+Traceback (most recent call last):
+  File "C:\Users\ganys\python_work\YIL_trading\SP_YIL.py", line 7, in <module>
+    import pandas as pd
+ModuleNotFoundError: No module named 'pandas'
+Traceback (most recent call last):
+  File "C:\Users\ganys\python_work\YIL_trading\SP_YIL.py", line 7, in <module>
+    import pandas as pd
+ModuleNotFoundError: No module named 'pandas'
+C:\Users\ganys\AppData\Roaming\Python\Python313\site-packages\pykrx\__init__.py:4: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+Traceback (most recent call last):
+  File "C:\Users\ganys\python_work\YIL_trading\SP_YIL.py", line 220, in <module>
+    print(f"\U0001f552 스케줄러 시작: 매일 {args.start}에 main() 실행")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp949' codec can't encode character '\U0001f552' in position 0: illegal multibyte sequence
+C:\Users\ganys\AppData\Roaming\Python\Python313\site-packages\pykrx\__init__.py:4: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+Traceback (most recent call last):
+  File "C:\Users\ganys\python_work\YIL_trading\SP_YIL.py", line 220, in <module>
+    print(f"\U0001f552 스케줄러 시작: 매일 {args.start}에 main() 실행")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp949' codec can't encode character '\U0001f552' in position 0: illegal multibyte sequence
+C:\Users\ganys\AppData\Roaming\Python\Python313\site-packages\pykrx\__init__.py:4: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+Traceback (most recent call last):
+  File "C:\Users\ganys\python_work\YIL_trading\SP_YIL.py", line 220, in <module>
+    print(f"\U0001f552 스케줄러 시작: 매일 {args.start}에 main() 실행")
+    ~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+UnicodeEncodeError: 'cp949' codec can't encode character '\U0001f552' in position 0: illegal multibyte sequence

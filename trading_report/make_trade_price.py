@@ -531,8 +531,8 @@ def make_trade_price(cfg) -> pd.DataFrame:
     # ─────────────────────────────
     # ① 고정 비중 파라미터 설정
     # ─────────────────────────────
-    equity = 2_000_000.0      # 총자산 (예: 1,000만 원)
-    risk_pct = 0.1            # 포지션당 5% 비중
+    equity = 1_000_000.0      # 총자산 (예: 1,00만 원)
+    risk_pct = 0.2            # 포지션당 20% 비중
     allow_short = False
     tick_fn: TickSizeFn = default_tick_size
     holidays = None
@@ -652,9 +652,9 @@ def make_trade_price(cfg) -> pd.DataFrame:
 
     # 필터 조건
     cond_mask = (
-        (out["Score_1w"].fillna(-1) >= 140) &
-        (out["RR"].fillna(-1)        >= 2.5) &
-        (out["confidence"].fillna(-1) >= 0.45)
+        (out["Score_1w"].fillna(-1) >= 160) &
+        (out["RR"].fillna(-1)        >= 2.6) &
+        (out["confidence"].fillna(-1) >= 0.50)
     )
 
     # 한 포지션에 배분할 금액

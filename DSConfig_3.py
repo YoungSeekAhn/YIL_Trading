@@ -41,6 +41,10 @@ class DSConfig:
     
     env_dir: str = "./kis_trade"  # .env 파일 경로 (자동매매용)
 
+    # 투자 관련
+    FinalScore_threshold: float = 150.0  # 최종 점수 필터 임계값
+    equity: float = 10_000_000  # 초기 자본금 (원)
+    risk_per_trade: float = 0.1  # 1회 거래당 리스크 비율 (예: 0.01 = 1%)
 
     #test_getdata_dir: str = "./TR_LSTM3/_csvdata/삼성전자(005930)_20250909.csv"
 

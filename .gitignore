@@ -7,4 +7,8 @@ _getdata/
 _predict_report/
 _predict_result/
 build/ 
+<<<<<<< HEAD
 venv_min/
+=======
+logs/
+>>>>>>> f1a5574cba7263ebe4825fc0fdc00b4196bb4aea

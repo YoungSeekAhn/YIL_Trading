@@ -1,0 +1,10 @@
+services:
+  yil_trading:
+    build: .
+    image: yil_trading:latest
+    container_name: yil_trading_run
+    working_dir: /app
+    volumes:
+      - ./:/app
+    environment:
+      - TZ=Asia/Seoul

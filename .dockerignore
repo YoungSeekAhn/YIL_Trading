@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+_getdata/
+_predict_report/
+_predict_result/
+_predict_report/
+_selec_out/
+_train/
+build/
+dist/
+logs/
+
+

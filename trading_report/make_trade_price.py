@@ -267,7 +267,7 @@ def compute_levels(row, h_sel, last_close, last_pred: Dict[str, float],
 
 # ====== 추가 파라미터 ======
 def map_holding_days(h_sel: str) -> int:
-    return int(h_sel[1]) if h_sel in {"h1","h2","h3"} else 2
+    return int(h_sel[1]) +2 if h_sel in {"h1","h2","h3"} else 2
 
 
 def _to_dateset(dates_like: Optional[List[str]]) -> set:
@@ -489,7 +489,7 @@ def process_one_file(csv_path: Path,
             "source_file": csv_path.name,
             "종목명": name, "종목코드": code,
             "권장호라이즌": best_h,
-            "요약점수(h1)": explain["h1"]["total"], "요약점수(h2)": explain["h2"]["total"], "요약점수(h3)": explain["h3"]["total"],
+        #    "요약점수(h1)": explain["h1"]["total"], "요약점수(h2)": explain["h2"]["total"], "요약점수(h3)": explain["h3"]["total"],
             f"{best_h}_MAPE(%)": wrow.get(f"{best_h}_close_MAPE(%)", np.nan),
             f"{best_h}_DirAcc(%)": wrow.get(f"{best_h}_close_DirAcc(%)", np.nan),
             f"{best_h}_Bias": wrow.get(f"{best_h}_close_Bias", np.nan),
@@ -503,10 +503,10 @@ def process_one_file(csv_path: Path,
             "holding_days": holding_days,
             "valid_until": valid_until,
             # 부가정보
-            "ex_base_h1": explain["h1"]["base"], "ex_pen_h1": explain["h1"]["penalty"],
-            "ex_base_h2": explain["h2"]["base"], "ex_pen_h2": explain["h2"]["penalty"],
-            "ex_base_h3": explain["h3"]["base"], "ex_pen_h3": explain["h3"]["penalty"],
-            "flags_h1": ";".join(flags["h1"]), "flags_h2": ";".join(flags["h2"]), "flags_h3": ";".join(flags["h3"]),
+        #    "ex_base_h1": explain["h1"]["base"], "ex_pen_h1": explain["h1"]["penalty"],
+        #    "ex_base_h2": explain["h2"]["base"], "ex_pen_h2": explain["h2"]["penalty"],
+        #    "ex_base_h3": explain["h3"]["base"], "ex_pen_h3": explain["h3"]["penalty"],
+        #    "flags_h1": ";".join(flags["h1"]), "flags_h2": ";".join(flags["h2"]), "flags_h3": ";".join(flags["h3"]),
         }
         if risk_used is not None:
             res["risk_cap_used"] = risk_used
@@ -531,8 +531,8 @@ def make_trade_price(cfg) -> pd.DataFrame:
     # ─────────────────────────────
     # ① 고정 비중 파라미터 설정
     # ─────────────────────────────
-    equity = 2_000_000.0      # 총자산 (예: 1,000만 원)
-    risk_pct = 0.1            # 포지션당 5% 비중
+    equity = cfg.equity                     # 총자산 (예: 1,00만 원)
+    risk_pct = cfg.risk_per_trade           # 포지션당 20% 비중
     allow_short = False
     tick_fn: TickSizeFn = default_tick_size
     holidays = None
@@ -564,7 +564,7 @@ def make_trade_price(cfg) -> pd.DataFrame:
     out = pd.DataFrame(all_rows)
 
     # ─────────────────────────────
-    # ③ Score_1w 병합 (scored_{end}.csv)
+    # ③ FinalScore 병합 (scored_{end}.csv)
     # ─────────────────────────────
     score_path = Path(cfg.selout_dir) / f"scored_{cfg.end_date}.csv"
     score_df = None
@@ -573,11 +573,11 @@ def make_trade_price(cfg) -> pd.DataFrame:
         score_df = score_df.rename(columns={"Name": "종목명", "Code": "종목코드"})
         if "종목코드" in score_df.columns:
             score_df["종목코드"] = _norm_code(score_df["종목코드"])
-        if "Score_1w" in score_df.columns:
-            score_df["Score_1w"] = pd.to_numeric(score_df["Score_1w"], errors="coerce")
+        if "FinalScore" in score_df.columns:
+            score_df["FinalScore"] = pd.to_numeric(score_df["FinalScore"], errors="coerce")
         else:
-            logging.warning("Score file has no 'Score_1w'.")
-            score_df["Score_1w"] = np.nan
+            logging.warning("Score file has no 'FinalScore'.")
+            score_df["FinalScore"] = np.nan
     else:
         logging.warning(f"Score file not found: {score_path}")
 
@@ -589,17 +589,17 @@ def make_trade_price(cfg) -> pd.DataFrame:
         merged_done = False
 
         if "종목코드" in out.columns and "종목코드" in score_df.columns:
-            tmp = score_df[["종목코드", "Score_1w"]].drop_duplicates("종목코드")
+            tmp = score_df[["종목코드", "FinalScore"]].drop_duplicates("종목코드")
             merged = merged.merge(tmp, on="종목코드", how="left")
             merged_done = True
 
         if not merged_done and ("종목명" in out.columns and "종목명" in score_df.columns):
-            tmp = score_df[["종목명", "Score_1w"]].drop_duplicates("종목명")
+            tmp = score_df[["종목명", "FinalScore"]].drop_duplicates("종목명")
             merged = merged.merge(tmp, on="종목명", how="left")
             merged_done = True
 
         if not merged_done:
-            logging.warning("Cannot merge Score_1w: no common keys ('종목코드' or '종목명').")
+            logging.warning("Cannot merge FinalScore: no common keys ('종목코드' or '종목명').")
         else:
             out = merged
 
@@ -608,15 +608,15 @@ def make_trade_price(cfg) -> pd.DataFrame:
     # ─────────────────────────────
     order = [
         "source_file","종목명","종목코드","권장호라이즌","last_close",
-        "매수가(entry)","익절가(tp)","손절가(sl)","RR","Score_1w",
+        "매수가(entry)","익절가(tp)","손절가(sl)","RR","FinalScore",
         "ord_qty","side","confidence","holding_days","valid_until",
-        "ATR","buf_close","buf_high","buf_low",
-        "요약점수(h1)","요약점수(h2)","요약점수(h3)",
-        "ex_base_h1","ex_pen_h1","ex_base_h2","ex_pen_h2","ex_base_h3","ex_pen_h3",
-        "flags_h1","flags_h2","flags_h3","warn_bad_RR",
-        "h1_MAPE(%)","h1_DirAcc(%)","h1_Bias","h1_MAE","h1_count",
-        "h3_MAPE(%)","h3_DirAcc(%)","h3_Bias","h3_MAE","h3_count",
-        "h2_MAPE(%)","h2_DirAcc(%)","h2_Bias","h2_MAE","h2_count",
+       # "ATR","buf_close","buf_high","buf_low",
+       # "요약점수(h1)","요약점수(h2)","요약점수(h3)",
+       # "ex_base_h1","ex_pen_h1","ex_base_h2","ex_pen_h2","ex_base_h3","ex_pen_h3",
+       # "flags_h1","flags_h2","flags_h3","warn_bad_RR",
+       # "h1_MAPE(%)","h1_DirAcc(%)","h1_Bias","h1_MAE","h1_count",
+       # "h3_MAPE(%)","h3_DirAcc(%)","h3_Bias","h3_MAE","h3_count",
+       # "h2_MAPE(%)","h2_DirAcc(%)","h2_Bias","h2_MAE","h2_count",
     ]
     cols = [c for c in order if c in out.columns] + [c for c in out.columns if c not in order]
     out = out[cols]
@@ -624,10 +624,10 @@ def make_trade_price(cfg) -> pd.DataFrame:
     # ─────────────────────────────
     # ⑤ 정렬: Score_1w ↓ → RR ↓ → (confidence ≥ 0.4) 우선 → confidence ↓
     # ─────────────────────────────
-    if "Score_1w" not in out.columns:
-        out["Score_1w"] = np.nan
+    if "FinalScore" not in out.columns:
+        out["FinalScore"] = np.nan
 
-    out["Score_1w"] = pd.to_numeric(out["Score_1w"], errors="coerce")
+    out["FinalScore"] = pd.to_numeric(out["FinalScore"], errors="coerce")
     out["RR"] = pd.to_numeric(out.get("RR", np.nan), errors="coerce")
     out["confidence"] = pd.to_numeric(out.get("confidence", np.nan), errors="coerce")
 
@@ -635,7 +635,7 @@ def make_trade_price(cfg) -> pd.DataFrame:
     out["_confidence_num"] = out["confidence"]
 
     out.sort_values(
-        by=["Score_1w", "RR", "_conf_bucket", "_confidence_num"],
+        by=["FinalScore", "RR", "_conf_bucket", "_confidence_num"],
         ascending=[False, False, False, False],
         na_position="last",
         inplace=True
@@ -644,7 +644,7 @@ def make_trade_price(cfg) -> pd.DataFrame:
 
     # ─────────────────────────────
     # ⑥ 고정 비중 방식으로 ord_qty 재계산
-    #     조건: Score_1w ≥ 140, RR ≥ 2.5, confidence ≥ 0.45
+    #     조건: FinalScore ≥ 150, RR ≥ 2.5, confidence ≥ 0.45
     #     나머지는 ord_qty = 0
     # ─────────────────────────────
     # 기본값: 모두 0으로 초기화
@@ -652,9 +652,9 @@ def make_trade_price(cfg) -> pd.DataFrame:
 
     # 필터 조건
     cond_mask = (
-        (out["Score_1w"].fillna(-1) >= 140) &
-        (out["RR"].fillna(-1)        >= 2.5) &
-        (out["confidence"].fillna(-1) >= 0.45)
+        (out["FinalScore"].fillna(-1) >= cfg.FinalScore_threshold) &
+        (out["RR"].fillna(-1)        >= 2.6) &
+        (out["confidence"].fillna(-1) >= 0.50)
     )
 
     # 한 포지션에 배분할 금액

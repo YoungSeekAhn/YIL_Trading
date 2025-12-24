@@ -145,18 +145,25 @@ def main():
         report_sel_stock(config)  # 선정 리포트 생성 시도
 
     sel = pd.read_csv(SEL_CSV_PATH, dtype={"Code": str})
-    # 안전한 정렬 (Score_1w 내림차순)
-    if "Score_1w" not in sel.columns:
-        raise ValueError("CSV에 'Score_1w' 컬럼이 없습니다.")
-    sel = sel.sort_values(by="Score_1w", ascending=False).reset_index(drop=True)
 
-    # 상위 N 추출 (Name, Code만 필요)
+    # FinalScore 컬럼 존재 확인
+    if "FinalScore" not in sel.columns:
+        raise ValueError("CSV에 'FinalScore' 컬럼이 없습니다.")
+
+    # 1) FinalScore > 150 필터
+    sel = sel[sel["FinalScore"] > 150]
+
+    # 2) FinalScore 내림차순 정렬
+    sel = sel.sort_values(by="FinalScore", ascending=False).reset_index(drop=True)
+
+    # 3) 상위 N 추출 (Name, Code만 필요)
     cols_needed = ["Name", "Code"]
     for c in cols_needed:
         if c not in sel.columns:
             raise ValueError(f"CSV에 '{c}' 컬럼이 없습니다.")
-    top = sel.loc[:TOP_N - 1, cols_needed].copy()
 
+    top = sel[cols_needed]
+    
     print("===============================================")
     print(f"sel_stock_ndays 상위 {TOP_N} 종목 학습 파이프라인 시작")
     print("===============================================")
@@ -219,7 +226,7 @@ if __name__ == "__main__":
 
     print(f"🕒 스케줄러 시작: 매일 {args.start}에 main() 실행")
 
-    #run_job()  # 스크립트 시작 시 즉시 실행
+    run_job()  # 스크립트 시작 시 즉시 실행
     
     # 스케줄 등록
     schedule.every().day.at(args.start).do(run_job)
@@ -238,3 +245,4 @@ if __name__ == "__main__":
 #  --icon=icon.ico ^
 #  --add-data "config/.env;config/" ^
 #  src/auto_trader.py
+

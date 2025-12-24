@@ -131,7 +131,7 @@ def _attach_score_1w(df: pd.DataFrame, cfg) -> pd.DataFrame:
     df에 Score_1w가 없으면 scored_{end}.csv에서 붙임.
     우선키: 종목코드 -> 예비키: 종목명
     """
-    if "Score_1w" in df.columns:
+    if "FinalScore" in df.columns:
         return df
 
     score_path = Path(cfg.selout_dir) / f"scored_{cfg.end_date}.csv"
@@ -485,9 +485,9 @@ def report_trade_price(cfg):
     df["conf_num"]     = pd.to_numeric(df.get("confidence"), errors="coerce")
 
     cond = (
-        (df["Score_1w_num"] >= 140) &
-        (df["RR_num"]       >= 2.5) &
-        (df["conf_num"]     >= 0.45)
+        (df["Score_1w_num"] >= 160) &
+        (df["RR_num"]       >= 2.6) &
+        (df["conf_num"]     >= 0.50)
     )
     df_cards = df.loc[cond].copy()
 
@@ -509,6 +509,10 @@ def report_trade_price(cfg):
         f.write(html_text)
     print(f"[OK] HTML saved -> {out_html}")
 
+    auto_tr_csv = Path(cfg.price_report_dir) / f"Report_{cfg.end_date}" / f"Auto_Trading_{cfg.end_date}.csv"
+    df_cards.to_csv(auto_tr_csv, index=False, encoding="utf-8-sig")
+    print(f"[OK] Auto Trading CSV saved -> {auto_tr_csv}")
+    
     # 공유 폴더 복사
     copy_path = Path(r"C:\Users\ganys\python_work\YIL_server\shared\reports\3_price")
     try:
@@ -518,6 +522,14 @@ def report_trade_price(cfg):
     except Exception as e:
         print(f"[WARN] failed to copy HTML to shared reports: {e}")
 
+    copy_path_csv = Path(r"C:\Users\ganys\python_work\YIL_TR_AUTO\_price_report")
+    
+    try:
+        copy_path_csv.mkdir(parents=True, exist_ok=True)
+        shutil.copy(auto_tr_csv, copy_path_csv / auto_tr_csv.name)
+        print(f"[OK] Auto Trading CSV copied to -> {copy_path_csv / auto_tr_csv.name}")
+    except Exception as e:
+        print(f"[WARN] failed to copy Auto Trading CSV to shared reports: {e}")
 # -------------------------
 # 실행 스크립트
 # -------------------------

@@ -2,8 +2,8 @@
 """
 score_universe.py
 - KOSPI200 종목을 대상으로 조건별 점수 산정
-- 최근 영업일 3일 점수 합산(FinalScore) + 지표별 누적 점수 저장
-
+- 기술적(6), 거래량(2), 수급(5) = 총 13개 항목 → 최대 100점
+- 최근 영업일 5일 점수 합산(Score_1w) + 지표별 누적 점수 저장
 """
 
 import warnings
@@ -38,33 +38,28 @@ TOP_N_MARCAP = 100
 PICK_TOP = 10
 INDEX_TICKER = "KS11"
 LOOKBACK_DAYS = 200
-WEEK_BDAYS = 3
-
-# 일일 점수 컷: ≥ 55 후보임
-# 1주 누적(3일 합산) 컷: ≥ 200(대략 55×3)부터 확인 권장임
-#p1_full이 있는 날은: 주간 점수 상위권에서 우선 매수가 안정적임
-
-# ===================== 가중치 =====================
+WEEK_BDAYS = 5
 
 WEIGHTS = {
-    # --- 패턴1(거래량 먼저, 가격 늦게) ---
-    "p1_full": 30,           # 핵심 사건형 시그널이라 기본값 상향임
-    
-    # --- 기술적(추세/모멘텀/상대강도) --- : SUM = 36
-    "rsi30": 4,              # 과매도는 보조 신호임
-    "momentum_pos": 6,       # 방향성 시작 확인용임
-    "macd_cross": 8,        # 전환 신호로 의미가 커서 유지임
-    "ema5_over_ema20": 4,    # 빠른 크로스는 노이즈가 많아 낮춤임
-    "ema20_over_ema60": 6,   # 중기 추세 확인이라 유지임
-    "rs_plus": 8,           # 시장 대비 강도는 필수 성격이라 유지임
-
-    # --- 수급(안정화) --- : SUM = 34
-    "frg_own_1m_up": 10,     # 구조적 수급 변화라 유지임
-    "frg_3_pos": 5,          # 단기 추세 확인임
-    "frg_5_pos": 7,          # 3일보다 신뢰도 높아 약간 상향임
-    "ins_3_pos": 4,          # 기관은 단기 변동이 있어 중간임
-    "ins_5_pos": 8,          # 지속 매수는 의미가 커서 상향임
+    # --- 기술적 ---
+    "rsi30": 10,
+    "momentum_pos": 10,
+    "macd_cross": 10,
+    "ema5_over_ema20": 5,
+    "ema20_over_ema60": 10,
+    "rs_plus": 10,
+    # --- 거래량 ---
+    "vol_120": 5,
+    "vol_150": 10,
+    # --- 수급 ---
+    "frg_own_1m_up": 10,
+    "frg_3_pos": 5,
+    "frg_5_pos": 5,
+    "ins_3_pos": 5,
+    "ins_5_pos": 5,
 }
+
+VOLUME_SCORE_MODE = "max"  # "max" or "sum"
 # =================================================
 
 
@@ -99,7 +94,7 @@ def add_indicators(px: pd.DataFrame) -> pd.DataFrame:
     out["MACD"] = ema12 - ema26
     out["MACD_SIG"] = out["MACD"].ewm(span=9, adjust=False).mean()
 
-    # 거래량 이동평균 (패턴1 계산에 사용)
+    # 거래량 이동평균
     out["VOL_3MA"] = out["Volume"].rolling(3).mean()
     out["VOL_MA20"] = out["Volume"].rolling(20).mean()
 
@@ -161,10 +156,9 @@ class ScoreBreakdown:
     ema5_over_ema20: int = 0
     ema20_over_ema60: int = 0
     rs_plus: int = 0
-
-    # 패턴1 완성
-    p1_full: int = 0
-
+    # 거래량
+    vol_120: int = 0
+    vol_150: int = 0
     # 수급
     frg_own_1m_up: int = 0
     frg_3_pos: int = 0
@@ -173,13 +167,12 @@ class ScoreBreakdown:
     ins_5_pos: int = 0
 
     def total(self) -> int:
-        return (
-            self.rsi30 + self.momentum_pos + self.macd_cross +
-            self.ema5_over_ema20 + self.ema20_over_ema60 + self.rs_plus +
-            self.p1_full +
-            self.frg_own_1m_up + self.frg_3_pos + self.frg_5_pos +
-            self.ins_3_pos + self.ins_5_pos
-        )
+        vol_part = max(self.vol_120, self.vol_150) if VOLUME_SCORE_MODE == "max" else (self.vol_120 + self.vol_150)
+        base_sum = (self.rsi30 + self.momentum_pos + self.macd_cross +
+                    self.ema5_over_ema20 + self.ema20_over_ema60 + self.rs_plus +
+                    self.frg_own_1m_up + self.frg_3_pos + self.frg_5_pos +
+                    self.ins_3_pos + self.ins_5_pos)
+        return base_sum + vol_part
 
 
 def score_one(
@@ -194,7 +187,6 @@ def score_one(
     if px is None or px.empty or len(px) < 65:
         return 0, bd
 
-    px = px.sort_index()
     last = px.index.max()
 
     # (1) RSI < 30
@@ -248,24 +240,30 @@ def score_one(
     except Exception:
         pass
 
-    # (P1) 패턴1 "완성 점수"
-    # 조건:
+    # (7)(8) 거래량
+    # (7)(8) 거래량 점수 삭제 → (P1) 패턴1 "완성 점수"로 대체
+    # 패턴1 완성 조건:
     #  1) 거래량 급증: VOL_3MA / VOL_MA20 >= 1.8
     #  2) 가격 횡보: abs(오늘수익률) <= 2%
     #  3) 박스 상단 근처: 최근 20일 박스에서 상단 15% 구간
     try:
         if len(px) >= 25:
+            last = px.index.max()
+
+            # 1) 거래량 급증
             vol_ratio = px.loc[last, "VOL_3MA"] / (px.loc[last, "VOL_MA20"] + 1e-12)
             vol_spike_ok = (vol_ratio >= 1.8)
 
+            # 2) 가격 횡보 (오늘 종가 기준)
             c0 = float(px["Close"].iloc[-1])
             c1 = float(px["Close"].iloc[-2])
             ret_abs = abs(c0 / c1 - 1.0)
             price_flat_ok = (ret_abs <= 0.02)
 
+            # 3) 박스 상단 근처
             box_n = 20
             box_high = float(px["High"].iloc[-box_n:].max())
-            box_low = float(px["Low"].iloc[-box_n:].min())
+            box_low  = float(px["Low"].iloc[-box_n:].min())
             box_range = box_high - box_low
             if box_range > 0:
                 pos_in_box = (c0 - box_low) / box_range
@@ -273,8 +271,10 @@ def score_one(
             else:
                 near_top_ok = False
 
+            # "완성"일 때만 점수 부여
             if vol_spike_ok and price_flat_ok and near_top_ok:
                 bd.p1_full = WEIGHTS["p1_full"]
+
     except Exception:
         pass
 
@@ -299,7 +299,6 @@ def score_one(
     # (12)(13) 기관 연속 순매수
     try:
         if inv is not None and not inv.empty:
-            inv = inv.sort_index()
             if len(inv) >= 3 and (inv["INS"].iloc[-3:] > 0).all():
                 bd.ins_3_pos = WEIGHTS["ins_3_pos"]
             if len(inv) >= 5 and (inv["INS"].iloc[-5:] > 0).all():
@@ -311,7 +310,6 @@ def score_one(
 
 
 def pick_foreign_own_for_date(fr_df: pd.DataFrame, the_date: pd.Timestamp):
-    # NOTE: get_exhaustion_rates_of_foreign_investment_by_date 반환 컬럼이 "한도소진율"인 경우를 가정
     if fr_df is None or fr_df.empty or "한도소진율" not in fr_df.columns:
         return np.nan, np.nan
 
@@ -325,39 +323,44 @@ def pick_foreign_own_for_date(fr_df: pd.DataFrame, the_date: pd.Timestamp):
     return frg_now, frg_1m
 
 
-def compute_123_score(
+# ========= 주간(최근 5영업일) 합산 유틸 =========
+def compute_weekly_score(
     ticker: str,
     px: pd.DataFrame,
     inv: pd.DataFrame,
     kospi_close: pd.Series,
     fr_df: pd.DataFrame,
-    ):
+) -> Tuple[float, Dict[str, int], List[Dict]]:
     """
-    최근 3영업일 점수를 이용해
-    FinalScore = 1*Score_1d + 0.5*Score_2d + 0.33*Score_3d
+    최근 5영업일 각각에 대해 score_one(...)을 호출 → 합산
+    반환:
+      - week_sum: 주간 총점(float)
+      - week_bd_sum: 지표별 주간 누적 점수 dict (WEIGHTS 키 전부 포함)
+      - daily_breakdown: [{date, score, **breakdown}, ...] 최근 5영업일 리스트
     """
-    if px is None or px.empty or len(px) < 3:
-        return 0.0, {}, []
+    if px is None or px.empty:
+        return 0.0, {k: 0 for k in WEIGHTS.keys()}, []
 
     px = px.sort_index()
-    last_dates = list(px.index[-3:])  # 최근 3BD
+    last_dates = list(px.index[-WEEK_BDAYS:])  # 최근 5BD
 
-    daily_scores = []
-    daily_breakdown = []
+    week_sum = 0.0
+    week_bd_sum: Dict[str, int] = {k: 0 for k in WEIGHTS.keys()}
+    daily_breakdown: List[Dict] = []
 
     for d in last_dates:
         px_d = px.loc[:d]
-
         inv_d = None
         if inv is not None and not inv.empty:
             inv_d = inv.copy()
-            inv_d.index = pd.to_datetime(inv_d.index, errors="coerce")
+            if not isinstance(inv_d.index, pd.DatetimeIndex):
+                inv_d.index = pd.to_datetime(inv_d.index, errors="coerce")
             inv_d = inv_d.sort_index().loc[:d]
 
         kospi_d = kospi_close.loc[:d]
         frg_now_d, frg_1m_d = pick_foreign_own_for_date(fr_df, d)
 
-        score_d, bd_d = score_one(
+        total_d, bd_d = score_one(
             ticker=ticker,
             px=px_d,
             inv=inv_d,
@@ -366,29 +369,16 @@ def compute_123_score(
             frg_1m=frg_1m_d
         )
 
-        daily_scores.append(score_d)
-        daily_breakdown.append({
-            "date": d,
-            "score": score_d,
-            **bd_d.__dict__
-        })
+        week_sum += float(total_d)
 
-    # Score_1d, 2d, 3d
-    Score_1d = daily_scores[-1]
-    Score_2d = sum(daily_scores[-2:])
-    Score_3d = sum(daily_scores)
+        bd_dict = getattr(bd_d, "__dict__", {})
+        # ★ 지표별 누적
+        for k in week_bd_sum.keys():
+            week_bd_sum[k] += int(bd_dict.get(k, 0) or 0)
 
-    FinalScore = (
-        1 * Score_1d +
-        0.5 * Score_2d +
-        0.33 * Score_3d
-    )
+        daily_breakdown.append({"date": d, "score": float(total_d), **bd_dict})
 
-    return FinalScore, {
-        "Score_1d": Score_1d,
-        "Score_2d": Score_2d,
-        "Score_3d": Score_3d
-    }, daily_breakdown
+    return week_sum, week_bd_sum, daily_breakdown
 
 
 # ===================== 메인 파이프라인 =====================
@@ -400,7 +390,7 @@ def sel_stock(cfg):
     e_fdr = today.strftime("%Y-%m-%d")
     s_krx = start.strftime("%Y%m%d")
     e_krx = today.strftime("%Y%m%d")
-    d1m = (today - dt.timedelta(days=30)).strftime("%Y%m%d")
+    d1m  = (today - dt.timedelta(days=30)).strftime("%Y%m%d")
 
     print(f"[기간] {s_fdr} ~ {e_fdr}")
 
@@ -413,7 +403,7 @@ def sel_stock(cfg):
 
     # (선택) 외국인 지분율 스냅샷(미사용)
     _fr_now_df = foreign_ownership_ratio(e_krx, market="KOSPI")
-    _fr_1m_df = foreign_ownership_ratio(d1m, market="KOSPI")
+    _fr_1m_df  = foreign_ownership_ratio(d1m,  market="KOSPI")
 
     # KOSPI200 구성종목
     tickers = krx.get_index_portfolio_deposit_file("1028")
@@ -424,7 +414,7 @@ def sel_stock(cfg):
 
     for _, r in tqdm(uni.iterrows(), total=len(uni)):
         ticker = r["Code"]
-        name = r.get("Name", "")
+        name   = r.get("Name", "")
 
         try:
             # 4) 가격/거래량 + 인디케이터
@@ -438,7 +428,7 @@ def sel_stock(cfg):
                 "저가": "Low",
                 "종가": "Close",
                 "거래량": "Volume"
-            })[["Open", "High", "Low", "Close", "Volume"]]
+            })[["Open","High","Low","Close","Volume"]]
             px.index = pd.to_datetime(px.index)
             px = add_indicators(px)
 
@@ -451,8 +441,8 @@ def sel_stock(cfg):
                 fr_df.index = pd.to_datetime(fr_df.index)
                 fr_df = fr_df.sort_index()
 
-            # 7) 최근 3영업일 누적 계산
-            FinalScore, score_parts, daily_breakdown = compute_123_score(
+            # 7) 최근 5영업일 누적 계산
+            week_sum, week_bd_sum, daily_breakdown = compute_weekly_score(
                 ticker=ticker,
                 px=px,
                 inv=inv,
@@ -460,15 +450,20 @@ def sel_stock(cfg):
                 fr_df=fr_df if (fr_df is not None and not fr_df.empty) else pd.DataFrame()
             )
 
+            # ★ 누적 점수 저장
             row = {
                 "Name": name,
                 "Code": ticker,
-                "FinalScore": FinalScore,
-                **score_parts
+                "Score_1w": week_sum,
             }
+            # 지표별 누적(키 정렬 보장)
+            for k in WEIGHTS.keys():
+                if k in week_bd_sum:
+                    row[k] = int(week_bd_sum[k])
+
             rows.append(row)
 
-            # (선택) 일자별 breakdown 저장
+            # (선택) 일자별 breakdown을 별도 폴더에 저장하고 싶다면 주석 해제
             # out_dir = Path(cfg.selout_dir) / "daily_breakdown"
             # out_dir.mkdir(parents=True, exist_ok=True)
             # pd.DataFrame(daily_breakdown).to_csv(
@@ -476,19 +471,21 @@ def sel_stock(cfg):
             # )
 
         except Exception:
+            # 데이터 누락/휴장/형식 차이 등은 스킵
             continue
 
     if not rows:
         print("※ 결과 없음: 네트워크/거래일/pykrx 반환 형식 등을 확인하세요.")
         return
 
-    out = pd.DataFrame(rows).sort_values(["FinalScore"], ascending=[False])
+    out = pd.DataFrame(rows).sort_values(["Score_1w"], ascending=[False])
 
     # 출력
-    print("\n=== (직전 3영업일) 총점 상위 종목 ===")
-    print(out.head(PICK_TOP)[["Name", "Code", "FinalScore"]])
+    print("\n=== 직전 1주(5영업일) 총점 상위 종목 ===")
+    print(out.head(PICK_TOP)[["Name", "Code", "Score_1w"]])
+
     print("\n=== (참고) 지표별 주간 누적 점수(상위) ===")
-    cols = ["Name", "Code", "FinalScore","Score_1d"] + list(WEIGHTS.keys())
+    cols = ["Name","Code","Score_1w"] + list(WEIGHTS.keys())
     cols = [c for c in cols if c in out.columns]
     print(out.head(PICK_TOP)[cols])
 
@@ -498,11 +495,13 @@ def sel_stock(cfg):
     filepath = os.path.join(get_dir, f"scored_{e_krx}.csv")
     out.to_csv(filepath, index=False, encoding="utf-8-sig")
     print(f"[저장] {filepath}")
-
+    
     report_sel_stock(cfg)  # 리포트 생성 시도
 
 
 if __name__ == "__main__":
+    # DSConfig가 인스턴스가 아니라 클래스라면 적절히 인스턴스화하세요.
+    # 예: cfg = DSConfig()  또는  from DSConfig_3 import config as cfg
     cfg = DSConfig
     end_date = last_trading_day()
     cfg.end_date = end_date

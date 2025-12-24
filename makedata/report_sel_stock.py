@@ -95,7 +95,7 @@ def report_sel_stock(cfg):
 
     # 헤더 라벨(보기 좋게)
     header_map = {
-        "Name": "종목명", "Code": "코드", score_col: "Score(1w)",
+        "Name": "종목명", "Code": "코드", score_col: "FinalScore",
         "rsi30": "RSI<30", "momentum_pos": "Momentum",
         "macd_cross": "MACD", "ema5_over_ema20": "EMA5>20",
         "ema20_over_ema60": "EMA20>60", "rs_plus": "RS+",

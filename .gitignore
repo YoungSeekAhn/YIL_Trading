@@ -7,3 +7,4 @@ _getdata/
 _predict_report/
 _predict_result/
 build/ 
+venv_min/

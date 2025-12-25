@@ -126,68 +126,7 @@ COL_ALIASES = {
     "h3_DirAcc(%)": ["h3_DirAcc(%)", "h3_close_DirAcc(%)"],
 }
 
-def _attach_score_1w(df: pd.DataFrame, cfg) -> pd.DataFrame:
-    """
-    df에 Score_1w가 없으면 scored_{end}.csv에서 붙임.
-    우선키: 종목코드 -> 예비키: 종목명
-    """
-    if "FinalScore" in df.columns:
-        return df
 
-    score_path = Path(cfg.selout_dir) / f"scored_{cfg.end_date}.csv"
-    if not score_path.exists():
-        print(f"[WARN] score file not found: {score_path}")
-        df["Score_1w"] = pd.NA
-        return df
-
-    sc = pd.read_csv(score_path, dtype=str).rename(columns={"Name": "종목명", "Code": "종목코드"})
-    if "종목코드" in sc.columns:
-        sc["종목코드"] = _norm_code(sc["종목코드"])
-    if "종목코드" in df.columns:
-        df["종목코드"] = _norm_code(df["종목코드"])
-
-    if "Score_1w" in sc.columns:
-        sc["Score_1w"] = pd.to_numeric(sc["Score_1w"], errors="coerce")
-    else:
-        sc["Score_1w"] = pd.NA
-
-    merged = df.copy()
-    done = False
-    if "종목코드" in merged.columns and "종목코드" in sc.columns:
-        merged = merged.merge(sc[["종목코드", "Score_1w"]].drop_duplicates("종목코드"),
-                              on="종목코드", how="left")
-        done = True
-    if not done and ("종목명" in merged.columns and "종목명" in sc.columns):
-        merged = merged.merge(sc[["종목명", "Score_1w"]].drop_duplicates("종목명"),
-                              on="종목명", how="left")
-        done = True
-    if not done:
-        print("[WARN] cannot attach Score_1w (no common key).")
-        merged["Score_1w"] = pd.NA
-
-    return merged
-
-def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """테이블/카드 전시에 필요한 기본 컬럼 보장 + 대체명 매핑."""
-    df = df.copy()
-    if "종목코드" in df.columns:
-        df["종목코드"] = df["종목코드"].astype(str).str.zfill(6)
-    for out_col, cands in COL_ALIASES.items():
-        if out_col not in df.columns:
-            for c in cands:
-                if c in df.columns:
-                    df[out_col] = df[c]
-                    break
-    need = [
-        "종목명","종목코드","권장호라이즌","last_close",
-        "매수가(entry)","익절가(tp)","손절가(sl)","RR",
-        "Score_1w",
-        "ord_qty","side","confidence","holding_days","valid_until","source_file",
-    ]
-    for c in need:
-        if c not in df.columns:
-            df[c] = ""
-    return df
 
 # -------------------------
 # HTML 생성
@@ -468,37 +407,10 @@ def report_trade_price(cfg):
     input_csv = Path(cfg.price_report_dir) / f"Report_{cfg.end_date}" / f"Trading_price_{cfg.end_date}.csv"
     df = pd.read_csv(input_csv, dtype={"종목코드": str})
 
-    # Score_1w 병합 (없으면 붙임)
-    df = _attach_score_1w(df, cfg)
 
-    # 전시용 컬럼 정규화
-    df = _normalize_columns(df)
+    # 주문수량이 0이 아닌 종목만
+    df_cards = df[df["ord_qty"] > 0].copy()
 
-    # ---------------------------
-    # 카드용 데이터: 필터 + 정렬
-    # 조건: Score_1w ≥ 140, RR ≥ 2.5, confidence ≥ 0.45
-    # 정렬: Score_1w ↓, RR ↓, confidence ↓
-    # ---------------------------
-    # 안전한 숫자화
-    df["Score_1w_num"] = pd.to_numeric(df.get("Score_1w"), errors="coerce")
-    df["RR_num"]       = pd.to_numeric(df.get("RR"), errors="coerce")
-    df["conf_num"]     = pd.to_numeric(df.get("confidence"), errors="coerce")
-
-    cond = (
-        (df["Score_1w_num"] >= 160) &
-        (df["RR_num"]       >= 2.6) &
-        (df["conf_num"]     >= 0.50)
-    )
-    df_cards = df.loc[cond].copy()
-
-    df_cards.sort_values(
-        by=["Score_1w_num", "RR_num", "conf_num"],
-        ascending=[False, False, False],
-        inplace=True
-    )
-    # 카드 렌더링은 원래 컬럼명 사용하므로 보조 컬럼은 유지/삭제 아무거나 OK
-    # 필요하면 아래 주석 해제
-    # df_cards.drop(columns=["Score_1w_num","RR_num","conf_num"], inplace=True)
 
     # HTML 생성 (테이블은 전체 df, 카드는 필터된 df_cards)
     html_text = build_html(df, df_cards, with_cards=True, date_token=cfg.end_date)

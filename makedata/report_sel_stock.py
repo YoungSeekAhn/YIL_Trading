@@ -67,9 +67,9 @@ def report_sel_stock(cfg):
     df = pd.read_csv(csv_path, encoding="utf-8-sig")
 
     # 점수 컬럼 자동 탐지
-    score_col = next((c for c in df.columns if c.lower() == "score_1w"), None)
+    score_col = next((c for c in df.columns if c.lower() == "FinalScore"), None)
     if score_col is None:
-        raise ValueError("Score_1w(또는 score_1w) 컬럼을 찾을 수 없습니다.")
+        raise ValueError("FinalScore 컬럼을 찾을 수 없습니다.")
 
     # 숫자 변환
     df[score_col] = pd.to_numeric(df[score_col], errors="coerce")

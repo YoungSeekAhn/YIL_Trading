@@ -222,11 +222,7 @@ def compute_levels(row, h_sel, last_close, last_pred: Dict[str, float],
     if pd.isna(buf_close):
         buf_close = max(1.0, mae if pd.notna(mae) else 1.0)
 
-    # 기본 레벨
-    entry = float(last_close) - ENTRY_PULLBACK * buf_close
-    risk  = buf_close
-    tp    = float(last_close) + RISK_REWARD * risk
-    sl    = float(last_close) - risk
+
 
     # 예측 상한/하한으로 보수 조정
     p_close = last_pred.get("close", np.nan)
@@ -607,58 +603,34 @@ def make_trade_price(cfg) -> pd.DataFrame:
     # ④ 컬럼 순서 정리
     # ─────────────────────────────
     order = [
-        "source_file","종목명","종목코드","권장호라이즌","last_close",
-        "매수가(entry)","익절가(tp)","손절가(sl)","RR","FinalScore",
-        "ord_qty","side","confidence","holding_days","valid_until",
-       # "ATR","buf_close","buf_high","buf_low",
-       # "요약점수(h1)","요약점수(h2)","요약점수(h3)",
-       # "ex_base_h1","ex_pen_h1","ex_base_h2","ex_pen_h2","ex_base_h3","ex_pen_h3",
-       # "flags_h1","flags_h2","flags_h3","warn_bad_RR",
-       # "h1_MAPE(%)","h1_DirAcc(%)","h1_Bias","h1_MAE","h1_count",
-       # "h3_MAPE(%)","h3_DirAcc(%)","h3_Bias","h3_MAE","h3_count",
-       # "h2_MAPE(%)","h2_DirAcc(%)","h2_Bias","h2_MAE","h2_count",
+        "source_file","종목명","종목코드","last_close",
+        "매수가(entry)","익절가(tp)","손절가(sl)","ord_qty","FinalScore","RR",
+        "side","confidence","holding_days","valid_until","권장호라이즌",
     ]
     cols = [c for c in order if c in out.columns] + [c for c in out.columns if c not in order]
     out = out[cols]
 
-    # ─────────────────────────────
-    # ⑤ 정렬: Score_1w ↓ → RR ↓ → (confidence ≥ 0.4) 우선 → confidence ↓
-    # ─────────────────────────────
-    if "FinalScore" not in out.columns:
-        out["FinalScore"] = np.nan
-
-    out["FinalScore"] = pd.to_numeric(out["FinalScore"], errors="coerce")
     out["RR"] = pd.to_numeric(out.get("RR", np.nan), errors="coerce")
     out["confidence"] = pd.to_numeric(out.get("confidence", np.nan), errors="coerce")
 
-    out["_conf_bucket"] = (out["confidence"].fillna(-np.inf) >= 0.4).astype(int)
-    out["_confidence_num"] = out["confidence"]
-
-    out.sort_values(
-        by=["FinalScore", "RR", "_conf_bucket", "_confidence_num"],
-        ascending=[False, False, False, False],
-        na_position="last",
-        inplace=True
-    )
-    out.drop(columns=["_conf_bucket","_confidence_num"], inplace=True)
-
     # ─────────────────────────────
-    # ⑥ 고정 비중 방식으로 ord_qty 재계산
-    #     조건: FinalScore ≥ 150, RR ≥ 2.5, confidence ≥ 0.45
-    #     나머지는 ord_qty = 0
+    # ⑥ 주문수량 계산
     # ─────────────────────────────
-    # 기본값: 모두 0으로 초기화
-    out["ord_qty"] = 0
+    out["ord_qty"] = 0  # 기본값
 
-    # 필터 조건
+    # 임계값 안전 처리
+    fs_th = cfg.FinalScore_threshold
+    rr_th = 2.5
+    conf_th = 0.40
+
     cond_mask = (
-        (out["FinalScore"].fillna(-1) >= cfg.FinalScore_threshold) &
-        (out["RR"].fillna(-1)        >= 2.6) &
-        (out["confidence"].fillna(-1) >= 0.50)
+        (out["FinalScore"].fillna(-1) >= fs_th) &
+        (out["RR"].fillna(-1)        >= rr_th) &
+        (out["confidence"].fillna(-1) >= conf_th)
     )
+     # 한 포지션에 배분할 금액
+    alloc_money = cfg.equity * cfg.risk_per_trade  # 예: 1천만 * 5% = 50만
 
-    # 한 포지션에 배분할 금액
-    alloc_money = equity * risk_pct  # 예: 1천만 * 5% = 50만
 
     def _calc_fixed_qty(row):
         entry = row.get("매수가(entry)")
@@ -677,7 +649,16 @@ def make_trade_price(cfg) -> pd.DataFrame:
         q = int(alloc_money // per_share_cost)
         return max(q, 1)  # 조건 만족하는 종목은 최소 1주는 매수
 
-    out.loc[cond_mask, "ord_qty"] = out[cond_mask].apply(_calc_fixed_qty, axis=1)
+
+    # 조건 통과 종목만 계산
+    if cond_mask.any():
+        out.loc[cond_mask, "ord_qty"] = out.loc[cond_mask].apply(_calc_fixed_qty, axis=1)
+
+    logging.info(
+        f"[make_trade_price] candidates={int(cond_mask.sum())}, "
+        f"equity={equity}, risk_pct={risk_pct}, alloc_money={alloc_money}, "
+        f"thresholds(FS={fs_th}, RR={rr_th}, conf={conf_th})"
+    )
 
     # ─────────────────────────────
     # ⑦ 저장

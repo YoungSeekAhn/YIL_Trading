@@ -150,8 +150,8 @@ def main():
     if "FinalScore" not in sel.columns:
         raise ValueError("CSV에 'FinalScore' 컬럼이 없습니다.")
 
-    # 1) FinalScore > 150 필터
-    sel = sel[sel["FinalScore"] > 150]
+    # 1) FinalScore > config.FinalScore_threshold 필터
+    sel = sel[sel["FinalScore"] > config.FinalScore_threshold]
 
     # 2) FinalScore 내림차순 정렬
     sel = sel.sort_values(by="FinalScore", ascending=False).reset_index(drop=True)

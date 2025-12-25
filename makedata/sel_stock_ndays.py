@@ -256,12 +256,12 @@ def score_one(
     try:
         if len(px) >= 25:
             vol_ratio = px.loc[last, "VOL_3MA"] / (px.loc[last, "VOL_MA20"] + 1e-12)
-            vol_spike_ok = (vol_ratio >= 1.8)
+            vol_spike_ok = (vol_ratio >= 1.3)
 
             c0 = float(px["Close"].iloc[-1])
             c1 = float(px["Close"].iloc[-2])
             ret_abs = abs(c0 / c1 - 1.0)
-            price_flat_ok = (ret_abs <= 0.02)
+            price_flat_ok = (ret_abs <= 0.03)
 
             box_n = 20
             box_high = float(px["High"].iloc[-box_n:].max())
@@ -269,7 +269,7 @@ def score_one(
             box_range = box_high - box_low
             if box_range > 0:
                 pos_in_box = (c0 - box_low) / box_range
-                near_top_ok = (pos_in_box >= 0.85)
+                near_top_ok = (pos_in_box >= 0.6)
             else:
                 near_top_ok = False
 
@@ -378,11 +378,11 @@ def compute_123_score(
     Score_2d = sum(daily_scores[-2:])
     Score_3d = sum(daily_scores)
 
-    FinalScore = (
+    FinalScore = int(round(
         1 * Score_1d +
         0.5 * Score_2d +
         0.33 * Score_3d
-    )
+    ))
 
     return FinalScore, {
         "Score_1d": Score_1d,
@@ -451,7 +451,7 @@ def sel_stock(cfg):
                 fr_df.index = pd.to_datetime(fr_df.index)
                 fr_df = fr_df.sort_index()
 
-            # 7) 최근 3영업일 누적 계산
+            # 7) 최근 3영업일 점수 계산
             FinalScore, score_parts, daily_breakdown = compute_123_score(
                 ticker=ticker,
                 px=px,
@@ -460,21 +460,21 @@ def sel_stock(cfg):
                 fr_df=fr_df if (fr_df is not None and not fr_df.empty) else pd.DataFrame()
             )
 
+            # 최근일(오늘) breakdown만 별도 저장(출력/분석용)
+            last_bd = daily_breakdown[-1] if daily_breakdown else {}
+            # last_bd에는 date, score, rsi30..., p1_full... 등이 들어있음
+            # date/score는 중복되니 제거(선택)
+            last_bd_clean = {k: v for k, v in last_bd.items() if k not in {"date", "score"}}
+
             row = {
                 "Name": name,
                 "Code": ticker,
                 "FinalScore": FinalScore,
-                **score_parts
+                **score_parts,          # Score_1d, Score_2d, Score_3d
+                **last_bd_clean         # (선택) 오늘 지표별 점수: rsi30, p1_full 등
             }
             rows.append(row)
-
-            # (선택) 일자별 breakdown 저장
-            # out_dir = Path(cfg.selout_dir) / "daily_breakdown"
-            # out_dir.mkdir(parents=True, exist_ok=True)
-            # pd.DataFrame(daily_breakdown).to_csv(
-            #     out_dir / f"{ticker}_{e_krx}.csv", index=False, encoding="utf-8-sig"
-            # )
-
+        
         except Exception:
             continue
 
@@ -499,7 +499,7 @@ def sel_stock(cfg):
     out.to_csv(filepath, index=False, encoding="utf-8-sig")
     print(f"[저장] {filepath}")
 
-    report_sel_stock(cfg)  # 리포트 생성 시도
+    #report_sel_stock(cfg)  # 리포트 생성 시도
 
 
 if __name__ == "__main__":

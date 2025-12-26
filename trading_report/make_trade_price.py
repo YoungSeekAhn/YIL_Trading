@@ -222,25 +222,31 @@ def compute_levels(row, h_sel, last_close, last_pred: Dict[str, float],
     if pd.isna(buf_close):
         buf_close = max(1.0, mae if pd.notna(mae) else 1.0)
 
-
-
     # 예측 상한/하한으로 보수 조정
     p_close = last_pred.get("close", np.nan)
     p_high  = last_pred.get("high",  np.nan)
     p_low   = last_pred.get("low",   np.nan)
-    if not pd.isna(p_high) or not pd.isna(p_close):
-        candidates = [v for v in [p_high, p_close] if pd.notna(v)]
-        best_up = np.min(candidates) if candidates else np.nan
-        if pd.notna(best_up):
-            tp = min(tp, best_up - 0.5*buf_high)
-    if not pd.isna(p_low):
-        sl = max(sl, p_low + 0.5*buf_low)
+    
+        # -------------------------
+    # 1) 폴백: NaN이면 last_close 기반으로 대체
+    # -------------------------
+    p_close = float(p_close) if pd.notna(p_close) else float(last_close)
+    # high/low는 없을 수 있으니 close 기준으로 완화 폴백
+    p_high  = float(p_high)  if pd.notna(p_high)  else float(p_close + 0.5 * buf_high)
+    p_low   = float(p_low)   if pd.notna(p_low)   else float(p_close - 0.5 * buf_low)
 
-    # 수수료/슬리피지 보정
-    tp = tp * (1 - FEES_PCT) - SLIPPAGE
-    sl = sl * (1 + FEES_PCT) + SLIPPAGE
+    # -------------------------
+    # 2) 예측값 정렬(제약 복원): high >= close >= low 강제
+    #    (모델이 이 제약을 자주 깨서 tp/sl 역전 방지)
+    # -------------------------
+    low_, mid_, high_ = sorted([p_low, p_close, p_high])
+    p_low, p_close, p_high = low_, mid_, high_
+    
+    entry = p_close - ENTRY_PULLBACK*buf_close
+    tp = p_high - ENTRY_PULLBACK*buf_high
+    sl = p_low + ENTRY_PULLBACK*buf_low
 
-    # 틱 반올림
+      # 틱 반올림
     t_entry = tick_fn(entry, code)
     t_tp    = tick_fn(tp, code)
     t_sl    = tick_fn(sl, code)
@@ -249,6 +255,7 @@ def compute_levels(row, h_sel, last_close, last_pred: Dict[str, float],
     sl    = round_to_tick(sl,    t_sl,    mode="up")       # 손절은 약간 높게(더 타이트)
 
     rr = (tp - entry) / (entry - sl) if (entry - sl) > 0 else np.nan
+  
     return {
         "매수가(entry)": round(entry, 2),
         "익절가(tp)"   : round(tp, 2),

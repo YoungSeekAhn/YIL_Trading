@@ -506,4 +506,5 @@ if __name__ == "__main__":
     cfg = DSConfig
     end_date = last_trading_day()
     cfg.end_date = end_date
+    
     sel_stock(cfg)

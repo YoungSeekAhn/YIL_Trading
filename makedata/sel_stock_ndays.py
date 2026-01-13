@@ -500,6 +500,7 @@ def sel_stock(cfg):
     print(f"[저장] {filepath}")
 
     #report_sel_stock(cfg)  # 리포트 생성 시도
+    #print(f"[리포트] sel_stock 리포트 생성 완료")
 
 
 if __name__ == "__main__":
